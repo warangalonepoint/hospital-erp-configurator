@@ -233,7 +233,9 @@ export default function FeatureConfigurator() {
               type="number"
               value={cfg.billing.gstPercent}
               onChange={(e) =>
-                setCfg((c) => deepMerge(c, { billing: { gstPercent: Number(e.target.value || 0) } }))
+                setCfg((c) =>
+                  deepMerge(c, { billing: { ...c.billing, gstPercent: Number(e.target.value || 0) } })
+                )
               }
             />
           </div>
@@ -249,7 +251,9 @@ export default function FeatureConfigurator() {
             <input
               type="checkbox"
               checked={cfg.patients.enabled}
-              onChange={(e) => setCfg((c) => deepMerge(c, { patients: { enabled: e.target.checked } }))}
+              onChange={(e) =>
+                setCfg((c) => deepMerge(c, { patients: { ...c.patients, enabled: e.target.checked } }))
+              }
             />
           </label>
 
@@ -258,7 +262,9 @@ export default function FeatureConfigurator() {
             <input
               type="checkbox"
               checked={cfg.inventory.enabled}
-              onChange={(e) => setCfg((c) => deepMerge(c, { inventory: { enabled: e.target.checked } }))}
+              onChange={(e) =>
+                setCfg((c) => deepMerge(c, { inventory: { ...c.inventory, enabled: e.target.checked } }))
+              }
             />
           </label>
 
@@ -270,7 +276,9 @@ export default function FeatureConfigurator() {
                 value={cfg.inventory.lowStockThreshold}
                 onChange={(e) =>
                   setCfg((c) =>
-                    deepMerge(c, { inventory: { lowStockThreshold: Number(e.target.value || 0) } })
+                    deepMerge(c, {
+                      inventory: { ...c.inventory, lowStockThreshold: Number(e.target.value || 0) },
+                    })
                   )
                 }
               />
@@ -280,7 +288,9 @@ export default function FeatureConfigurator() {
                 value={cfg.inventory.nearExpiryDays}
                 onChange={(e) =>
                   setCfg((c) =>
-                    deepMerge(c, { inventory: { nearExpiryDays: Number(e.target.value || 0) } })
+                    deepMerge(c, {
+                      inventory: { ...c.inventory, nearExpiryDays: Number(e.target.value || 0) },
+                    })
                   )
                 }
               />
@@ -296,7 +306,9 @@ export default function FeatureConfigurator() {
               type="checkbox"
               checked={cfg.appointments.enabled}
               onChange={(e) =>
-                setCfg((c) => deepMerge(c, { appointments: { enabled: e.target.checked } }))
+                setCfg((c) =>
+                  deepMerge(c, { appointments: { ...c.appointments, enabled: e.target.checked } })
+                )
               }
             />
           </label>
@@ -306,7 +318,11 @@ export default function FeatureConfigurator() {
               type="checkbox"
               checked={cfg.appointments.singleDoctor}
               onChange={(e) =>
-                setCfg((c) => deepMerge(c, { appointments: { singleDoctor: e.target.checked } }))
+                setCfg((c) =>
+                  deepMerge(c, {
+                    appointments: { ...c.appointments, singleDoctor: e.target.checked },
+                  })
+                )
               }
             />
           </label>
@@ -319,7 +335,9 @@ export default function FeatureConfigurator() {
             <input
               type="checkbox"
               checked={cfg.billing.enabled}
-              onChange={(e) => setCfg((c) => deepMerge(c, { billing: { enabled: e.target.checked } }))}
+              onChange={(e) =>
+                setCfg((c) => deepMerge(c, { billing: { ...c.billing, enabled: e.target.checked } }))
+              }
             />
           </label>
           <label className="flex items-center justify-between gap-4">
@@ -328,7 +346,9 @@ export default function FeatureConfigurator() {
               type="checkbox"
               checked={cfg.staff.attendanceSimple}
               onChange={(e) =>
-                setCfg((c) => deepMerge(c, { staff: { attendanceSimple: e.target.checked } }))
+                setCfg((c) =>
+                  deepMerge(c, { staff: { ...c.staff, attendanceSimple: e.target.checked } })
+                )
               }
             />
           </label>
