@@ -1,9 +1,9 @@
-// public/js/nav.js  (no <script> tag)
+// --- nav.js (pure JS) ---
 function decodeCfg(b64){ try{ return JSON.parse(atob(decodeURIComponent(b64))); }catch{ return null; } }
 function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Array.isArray(b[k])){ a[k]=deepMerge(a[k]||{},b[k]) } else if(a[k]===undefined){ a[k]=b[k] } } return a; }
 
 (function init(){
-  // 1) load config from ?cfg= or localStorage
+  // 1) Load config from ?cfg=... or localStorage
   const url = new URL(location.href);
   const cfgB64 = url.searchParams.get("cfg");
   let cfg = cfgB64 ? decodeCfg(cfgB64) : null;
@@ -21,46 +21,46 @@ function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Ar
   cfg = deepMerge(cfg||{}, defaults);
   localStorage.setItem("erpConfig", JSON.stringify(cfg));
 
-  // 2) build sidebar menu (only show enabled)
+  // 2) Build sidebar (config-aware)
   const menu = [
-    { key:"patients",  label:"Patients",  href:"patients.html",    show: ()=>cfg.patients.enabled },
-    { key:"pharmacy",  label:"Pharmacy",  href:"pharmacy.html",    show: ()=>cfg.inventory.enabled },
-    { key:"grn",       label:"GRN (Add Stock)", href:"inventory-grn.html", show: ()=>cfg.inventory.enabled },
-    { key:"billing",   label:"Billing",   href:"billing.html",     show: ()=>cfg.billing.enabled },
-    { key:"config",    label:"Configurator", href:"/hospitalerp/configurator", external:true }
+    { key:"patients",  label:"Patients",            href:"patients.html",         show: ()=>cfg.patients.enabled },
+    { key:"pharmacy",  label:"Pharmacy",            href:"pharmacy.html",         show: ()=>cfg.inventory.enabled },
+    { key:"grn",       label:"GRN (Add Stock)",     href:"inventory-grn.html",    show: ()=>cfg.inventory.enabled },
+    { key:"billing",   label:"Billing",             href:"billing.html",          show: ()=>cfg.billing.enabled },
+    // Configurator is a Next.js route, not a static file → open directly (no cfg params)
+    { key:"config",    label:"Configurator",        href:"/configurator",         external:true }
   ];
 
+  const qpCfg = "cfg="+encodeURIComponent(btoa(JSON.stringify(cfg)));
   const side = document.getElementById("side");
   const ul = document.createElement("ul");
   ul.className = "nav";
 
-  const qpCfg = "cfg="+encodeURIComponent(btoa(JSON.stringify(cfg)));
-
   function linkFor(item){
-    if(item.external) return item.href;            // Next route keeps its own params
+    if(item.external) return item.href;             // open Next route as-is
     const u = new URL(item.href, location.origin);
     u.search = qpCfg;
     return u.toString();
   }
 
   menu.forEach(it=>{
-    if(it.show && !it.show()) return;
+    if(it.show && !it.show()) return;              // hide if feature disabled
     const li = document.createElement("li");
     const a = document.createElement("a");
-    a.href = "#"; a.textContent = it.label;
+    a.href = "#";
+    a.textContent = it.label;
     a.dataset.href = linkFor(it);
     a.onclick = (e)=>{ e.preventDefault(); setActive(a); loadPage(it); };
     li.appendChild(a); ul.appendChild(li);
   });
   side.innerHTML = ""; side.appendChild(ul);
 
-  // top bar text
+  // 3) Top bar branding
   const clinicName = document.getElementById("clinicName");
   const clinicMeta  = document.getElementById("clinicMeta");
   if (clinicName) clinicName.textContent = cfg.branding.clinicName || "Clinic";
   if (clinicMeta)  clinicMeta.textContent  = cfg.branding.address || "ERP Shell";
 
-  // helpers
   function setActive(a){
     document.querySelectorAll(".nav a").forEach(x=>x.classList.remove("active"));
     a.classList.add("active");
@@ -71,7 +71,7 @@ function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Ar
     frame.src = isExternal ? item.href : `${item.href}?${qpCfg}`;
   }
 
-  // default page from ?page=..., else first visible
+  // 4) Default page from ?page=..., else first visible
   const want = url.searchParams.get("page") || "patients.html";
   const first = Array.from(document.querySelectorAll(".nav a"))
     .find(a => (a.dataset.href||"").includes(want)) || document.querySelector(".nav a");
@@ -81,7 +81,7 @@ function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Ar
     loadPage(item);
   }
 
-  // actions
+  // 5) Share/Clear actions
   const shareBtn = document.getElementById("copyLinkBtn");
   if (shareBtn){
     shareBtn.onclick = ()=>{
