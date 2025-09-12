@@ -2,76 +2,77 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base dark mode */
-:root {
+/* ---------- Theme tokens (dark+light) ---------- */
+:root.theme-dark {
   --bg: #0b0b10;
   --card: #14141d;
   --line: #1f1f29;
   --mut: #a1a1aa;
   --prim: #0ea5e9;
+  --text: #fafafa;
+  --text-muted: #a1a1aa;
+  --field: #0f0f16;
+}
+:root.theme-light {
+  --bg: #fafafa;
+  --card: #ffffff;
+  --line: #e5e7eb;
+  --mut: #6b7280;
+  --prim: #0ea5e9;
+  --text: #0b1220;
+  --text-muted: #475569;
+  --field: #ffffff;
 }
 
+/* ---------- Base ---------- */
+html, body { height: 100%; }
 body {
-  @apply bg-[color:var(--bg)] text-neutral-50;
+  background: var(--bg);
+  color: var(--text);
   font-family: system-ui, Segoe UI, Roboto, sans-serif;
 }
 
 /* Links */
-a {
-  @apply text-sky-400 hover:underline;
-}
+a { color: #38bdf8; text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-/* Form dark theme (for Configurator in shell iframe) */
-.form-dark input,
-.form-dark select,
-.form-dark textarea {
-  color: #fafafa;
-  background-color: #0f0f16;
-  border: 1px solid #2a2a36;
+/* ---------- Forms (works in iframe shell too) ---------- */
+input, select, textarea, button {
+  font-family: inherit;
+  font-size: 14px;
   border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--field);
+  color: var(--text);
+  padding: 8px 10px;
 }
-
-.form-dark input:focus,
-.form-dark select:focus,
-.form-dark textarea:focus {
+input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--prim);
   box-shadow: 0 0 0 1px var(--prim);
 }
+button { cursor: pointer; }
+button.primary { background: var(--prim); border-color: transparent; color: #001019; font-weight: 600; }
+::placeholder { color: var(--text-muted); opacity: 1; }
 
-.form-dark button {
-  color: #fafafa;
-}
-
-.form-dark ::placeholder {
-  color: #a1a1aa;
-  opacity: 1;
-}
-
-/* Autofill fix (Chrome) */
-.form-dark input:-webkit-autofill {
-  -webkit-text-fill-color: #fafafa !important;
-  -webkit-box-shadow: 0 0 0 1000px #0f0f16 inset !important;
+/* Autofill (Chrome) */
+input:-webkit-autofill {
+  -webkit-text-fill-color: var(--text) !important;
+  -webkit-box-shadow: 0 0 0 1000px var(--field) inset !important;
 }
 
-/* Tables */
-table {
-  @apply w-full border-collapse bg-[color:var(--card)] rounded-xl overflow-hidden;
-}
-th,
-td {
-  @apply px-3 py-2 border-b border-[color:var(--line)] text-sm text-left;
-}
-tr:last-child td {
-  border-bottom: none;
-}
-/* === iOS-style switch (works in dark) === */
+/* ---------- Tables ---------- */
+table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 14px; overflow: hidden; }
+th, td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; color: var(--text); }
+tr:last-child td { border-bottom: none; }
+
+/* ---------- iOS-style Switch ---------- */
 .switch {
-  --h: 22px; --w: 42px; --pad: 3px; --on: var(--prim); --off: #3a3a45;
+  --h: 22px; --w: 42px; --pad: 3px; --on: var(--prim); --off: color-mix(in srgb, var(--line) 70%, transparent);
   position: relative; display: inline-flex; width: var(--w); height: var(--h);
   align-items: center; border-radius: calc(var(--h) / 2);
   background: var(--off); transition: background .2s ease; cursor: pointer;
-  box-shadow: inset 0 0 0 1px #2a2a36;
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .switch input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .switch .knob {
@@ -84,4 +85,7 @@ tr:last-child td {
 .switch:has(input:checked) .knob { transform: translateX(calc(var(--w) - var(--h))); }
 .switch:has(input:focus-visible) { outline: 2px solid var(--prim); outline-offset: 3px; }
 .switch.disabled { opacity: .5; cursor: not-allowed; }
-.switch + .switch-label { margin-left: .5rem; user-select: none; }
+
+/* ---------- Classic checkboxes/radios (fallback) ---------- */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--prim); width: 16px; height: 16px; cursor: pointer; }
+label:has(input[type="checkbox"]), label:has(input[type="radio"]) { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
