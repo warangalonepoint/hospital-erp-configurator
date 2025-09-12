@@ -14,21 +14,25 @@ function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Ar
     branding:{ clinicName:"Clinic", address:"", primaryColor:"#0ea5e9" },
     patients:{ enabled:true },
     inventory:{ enabled:true, lowStockThreshold:10, nearExpiryDays:60 },
-    appointments:{ singleDoctor:true },
+    appointments:{ singleDoctor:true },         // basic scheduler present
     billing:{ enabled:false },
     staff:{ attendanceSimple:false }
   };
   cfg = deepMerge(cfg||{}, defaults);
   localStorage.setItem("erpConfig", JSON.stringify(cfg));
 
-  // 2) Build sidebar (config-aware)
+  // 2) Sidebar (config-aware)
   const menu = [
-    { key:"patients",  label:"Patients",            href:"patients.html",         show: ()=>cfg.patients.enabled },
-    { key:"pharmacy",  label:"Pharmacy",            href:"pharmacy.html",         show: ()=>cfg.inventory.enabled },
-    { key:"grn",       label:"GRN (Add Stock)",     href:"inventory-grn.html",    show: ()=>cfg.inventory.enabled },
-    { key:"billing",   label:"Billing",             href:"billing.html",          show: ()=>cfg.billing.enabled },
-    // Next.js route, open as-is (no cfg params)
-    { key:"config",    label:"Configurator",        href:"/configurator",         external:true }
+    { key:"patients",      label:"Patients",            href:"patients.html",       show: ()=>cfg.patients.enabled },
+    { key:"pharmacy",      label:"Pharmacy",            href:"pharmacy.html",       show: ()=>cfg.inventory.enabled },
+    { key:"grn",           label:"GRN (Add Stock)",     href:"inventory-grn.html",  show: ()=>cfg.inventory.enabled },
+
+    // 🔥 NEW: Appointments page (S2). Shown if Patients is on (default true).
+    { key:"appointments",  label:"Appointments",        href:"bookings.html",       show: ()=>cfg.patients?.enabled !== false },
+
+    { key:"billing",       label:"Billing",             href:"billing.html",        show: ()=>cfg.billing.enabled },
+    // Next.js route → open as-is (no cfg param)
+    { key:"config",        label:"Configurator",        href:"/configurator",       external:true }
   ];
 
   const qpCfg = "cfg="+encodeURIComponent(btoa(JSON.stringify(cfg)));
@@ -37,8 +41,8 @@ function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Ar
   ul.className = "nav";
 
   function linkFor(item){
-    if(item.external) return item.href;
-    const u = new URL(item.href, location.origin);
+    if(item.external) return item.href;             // Next route
+    const u = new URL(item.href, location.origin);  // static page
     u.search = qpCfg;
     return u.toString();
   }
@@ -47,14 +51,15 @@ function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Ar
     if(it.show && !it.show()) return;
     const li = document.createElement("li");
     const a = document.createElement("a");
-    a.href = "#"; a.textContent = it.label;
+    a.href = "#";
+    a.textContent = it.label;
     a.dataset.href = linkFor(it);
     a.onclick = (e)=>{ e.preventDefault(); setActive(a); loadPage(it); };
     li.appendChild(a); ul.appendChild(li);
   });
   side.innerHTML = ""; side.appendChild(ul);
 
-  // 3) Top bar branding
+  // Branding
   const clinicName = document.getElementById("clinicName");
   const clinicMeta  = document.getElementById("clinicMeta");
   if (clinicName) clinicName.textContent = cfg.branding.clinicName || "Clinic";
@@ -70,7 +75,7 @@ function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Ar
     frame.src = isExternal ? item.href : `${item.href}?${qpCfg}`;
   }
 
-  // 4) Default page from ?page=..., else first visible
+  // Default: honor ?page=… else first visible (now shows Appointments if selected)
   const want = url.searchParams.get("page") || "patients.html";
   const first = Array.from(document.querySelectorAll(".nav a"))
     .find(a => (a.dataset.href||"").includes(want)) || document.querySelector(".nav a");
@@ -80,11 +85,13 @@ function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Ar
     loadPage(item);
   }
 
-  // 5) Share/Clear actions
+  // Share / Clear
   const shareBtn = document.getElementById("copyLinkBtn");
   if (shareBtn){
     shareBtn.onclick = ()=>{
-      const share = `${location.origin}${location.pathname}?page=${encodeURIComponent(want)}&${qpCfg}`;
+      const current = document.querySelector(".nav a.active");
+      const pageName = current ? new URL(current.dataset.href).pathname.split("/").pop() : "patients.html";
+      const share = `${location.origin}${location.pathname}?page=${encodeURIComponent(pageName)}&${qpCfg}`;
       navigator.clipboard.writeText(share).then(()=>alert("Link copied"));
     };
   }
