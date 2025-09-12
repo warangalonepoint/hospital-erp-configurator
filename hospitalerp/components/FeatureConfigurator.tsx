@@ -50,59 +50,57 @@ function deepMerge<T>(base: T, patch: Partial<T>): T {
   return out as T;
 }
 const b64 = (json: any) => encodeURIComponent(btoa(typeof json === "string" ? json : JSON.stringify(json)));
-function useStableNowISO() {
-  const ref = useRef<string>();
-  if (!ref.current) ref.current = new Date().toISOString();
-  return ref.current;
+function stableQuote(prefix = "Q") {
+  const d = new Date();
+  return `${prefix}-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}-001`;
 }
-function useStableQuoteNumber(prefix = "Q") {
-  const ref = useRef<string>();
-  if (!ref.current) {
-    const d = new Date();
-    ref.current = `${prefix}-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(
-      d.getDate()
-    ).padStart(2, "0")}-001`;
-  }
-  return ref.current;
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 /* ---------- Component ---------- */
 export default function FeatureConfigurator() {
-  const nowISO = useStableNowISO();
-  const defaultQuote = useStableQuoteNumber();
+  // 1) Seed with constants ONLY (no localStorage here)
+  const [cfg, setCfg] = useState<Config>(() =>
+    deepMerge(DEFAULT_CONFIG, { quote: { number: stableQuote(), date: todayISO() } })
+  );
 
-  // load once from localStorage and seed sensible defaults
-  const [cfg, setCfg] = useState<Config>(() => {
-    try {
-      const raw = localStorage.getItem("erpConfig");
-      const parsed = raw ? JSON.parse(raw) : {};
-      const merged = deepMerge(DEFAULT_CONFIG, parsed);
-      if (!merged.quote?.number) merged.quote.number = defaultQuote;
-      if (!merged.quote?.date) merged.quote.date = nowISO.slice(0, 10);
-      localStorage.setItem("erpConfig", JSON.stringify(merged));
-      return merged;
-    } catch {
-      const seeded = deepMerge(DEFAULT_CONFIG, { quote: { number: defaultQuote, date: nowISO.slice(0, 10) } });
-      localStorage.setItem("erpConfig", JSON.stringify(seeded));
-      return seeded;
-    }
-  });
-
-  // persist & live-tint brand color
+  // 2) On mount, load from localStorage and merge; on any cfg change, save back
   useEffect(() => {
-    localStorage.setItem("erpConfig", JSON.stringify(cfg));
+    // load
+    try {
+      if (typeof window !== "undefined") {
+        const raw = window.localStorage.getItem("erpConfig");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setCfg((prev) => deepMerge(prev, parsed));
+        } else {
+          // first-time save with seeded values
+          window.localStorage.setItem("erpConfig", JSON.stringify(cfg));
+        }
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("erpConfig", JSON.stringify(cfg));
+      }
+    } catch {}
+    // live-tint brand color
     if (cfg.branding?.primaryColor) {
       document.documentElement.style.setProperty("--prim", cfg.branding.primaryColor);
     }
   }, [cfg]);
 
-  // pricing calc (simple)
+  // 3) Pricing calc
   const basePrice = 59999;
   const addons = useMemo(() => {
     let n = 0;
     if (cfg.billing.enabled) n += 3000;
     if (cfg.staff.attendanceSimple) n += 2000;
-    // appointments currently included in base; price later if needed
     return n;
   }, [cfg.billing.enabled, cfg.staff.attendanceSimple]);
 
@@ -163,76 +161,44 @@ export default function FeatureConfigurator() {
       <div className="grid md:grid-cols-2 gap-4" style={{ marginTop: 16 }}>
         <div className="card space-y-3">
           <h2 className="font-semibold">Branding & Contact</h2>
-          <input
-            className="w-full"
-            placeholder="Clinic / Hospital Name"
+          <input className="w-full" placeholder="Clinic / Hospital Name"
             value={cfg.branding.clinicName}
-            onChange={(e) => setCfg((c) => deepMerge(c, { branding: { clinicName: e.target.value } }))}
-          />
-          <input
-            className="w-full"
-            placeholder="Address"
+            onChange={(e) => setCfg((c) => deepMerge(c, { branding: { clinicName: e.target.value } }))}/>
+          <input className="w-full" placeholder="Address"
             value={cfg.branding.address ?? ""}
-            onChange={(e) => setCfg((c) => deepMerge(c, { branding: { address: e.target.value } }))}
-          />
+            onChange={(e) => setCfg((c) => deepMerge(c, { branding: { address: e.target.value } }))}/>
           <div className="grid grid-cols-2 gap-3">
-            <input
-              placeholder="Phone"
-              value={cfg.branding.phone ?? ""}
-              onChange={(e) => setCfg((c) => deepMerge(c, { branding: { phone: e.target.value } }))}
-            />
-            <input
-              placeholder="Email"
-              value={cfg.branding.email ?? ""}
-              onChange={(e) => setCfg((c) => deepMerge(c, { branding: { email: e.target.value } }))}
-            />
+            <input placeholder="Phone" value={cfg.branding.phone ?? ""}
+              onChange={(e) => setCfg((c) => deepMerge(c, { branding: { phone: e.target.value } }))}/>
+            <input placeholder="Email" value={cfg.branding.email ?? ""}
+              onChange={(e) => setCfg((c) => deepMerge(c, { branding: { email: e.target.value } }))}/>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm" style={{ color: "var(--text-muted)" }}>
-              Primary Color
-            </label>
-            <input
-              type="color"
-              className="h-10 w-20"
+            <label className="text-sm" style={{ color: "var(--text-muted)" }}>Primary Color</label>
+            <input type="color" className="h-10 w-20"
               value={cfg.branding.primaryColor ?? "#0ea5e9"}
-              onChange={(e) => setCfg((c) => deepMerge(c, { branding: { primaryColor: e.target.value } }))}
-            />
+              onChange={(e) => setCfg((c) => deepMerge(c, { branding: { primaryColor: e.target.value } }))}/>
           </div>
         </div>
 
         <div className="card space-y-3">
           <h2 className="font-semibold">Quote Details</h2>
           <div className="grid grid-cols-2 gap-3">
-            <input
-              placeholder="Quote Number"
+            <input placeholder="Quote Number"
               value={cfg.quote.number}
-              onChange={(e) => setCfg((c) => deepMerge(c, { quote: { number: e.target.value } }))}
-            />
-            <input
-              type="date"
-              value={cfg.quote.date}
-              onChange={(e) => setCfg((c) => deepMerge(c, { quote: { date: e.target.value } }))}
-            />
+              onChange={(e) => setCfg((c) => deepMerge(c, { quote: { number: e.target.value } }))}/>
+            <input type="date" value={cfg.quote.date}
+              onChange={(e) => setCfg((c) => deepMerge(c, { quote: { date: e.target.value } }))}/>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm" style={{ color: "var(--text-muted)" }}>
-              Discount %
-            </label>
-            <input
-              type="number"
-              value={cfg.quote.discountPct}
-              onChange={(e) => setCfg((c) => deepMerge(c, { quote: { discountPct: Number(e.target.value || 0) } }))}
-            />
+            <label className="text-sm" style={{ color: "var(--text-muted)" }}>Discount %</label>
+            <input type="number" value={cfg.quote.discountPct}
+              onChange={(e) => setCfg((c) => deepMerge(c, { quote: { discountPct: Number(e.target.value || 0) } }))}/>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm" style={{ color: "var(--text-muted)" }}>
-              GST %
-            </label>
-            <input
-              type="number"
-              value={cfg.billing.gstPercent}
-              onChange={(e) => setCfg((c) => deepMerge(c, { billing: { gstPercent: Number(e.target.value || 0) } }))}
-            />
+            <label className="text-sm" style={{ color: "var(--text-muted)" }}>GST %</label>
+            <input type="number" value={cfg.billing.gstPercent}
+              onChange={(e) => setCfg((c) => deepMerge(c, { billing: { gstPercent: Number(e.target.value || 0) } }))}/>
           </div>
         </div>
       </div>
@@ -244,11 +210,8 @@ export default function FeatureConfigurator() {
           <label className="flex items-center justify-between gap-4">
             <span>Patients (UID + QR)</span>
             <span className="switch">
-              <input
-                type="checkbox"
-                checked={cfg.patients.enabled}
-                onChange={(e) => setCfg((c) => deepMerge(c, { patients: { enabled: e.target.checked } }))}
-              />
+              <input type="checkbox" checked={cfg.patients.enabled}
+                onChange={(e) => setCfg((c) => deepMerge(c, { patients: { enabled: e.target.checked } }))}/>
               <span className="knob" />
             </span>
           </label>
@@ -256,31 +219,18 @@ export default function FeatureConfigurator() {
           <label className="flex items-center justify-between gap-4">
             <span>Inventory & Pharmacy (basic)</span>
             <span className="switch">
-              <input
-                type="checkbox"
-                checked={cfg.inventory.enabled}
-                onChange={(e) => setCfg((c) => deepMerge(c, { inventory: { enabled: e.target.checked } }))}
-              />
+              <input type="checkbox" checked={cfg.inventory.enabled}
+                onChange={(e) => setCfg((c) => deepMerge(c, { inventory: { enabled: e.target.checked } }))}/>
               <span className="knob" />
             </span>
           </label>
 
           {cfg.inventory.enabled && (
             <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                placeholder="Low stock threshold"
-                value={cfg.inventory.lowStockThreshold}
-                onChange={(e) =>
-                  setCfg((c) => deepMerge(c, { inventory: { lowStockThreshold: Number(e.target.value || 0) } }))
-                }
-              />
-              <input
-                type="number"
-                placeholder="Near expiry days"
-                value={cfg.inventory.nearExpiryDays}
-                onChange={(e) => setCfg((c) => deepMerge(c, { inventory: { nearExpiryDays: Number(e.target.value || 0) } }))}
-              />
+              <input type="number" placeholder="Low stock threshold" value={cfg.inventory.lowStockThreshold}
+                onChange={(e) => setCfg((c) => deepMerge(c, { inventory: { lowStockThreshold: Number(e.target.value || 0) } }))}/>
+              <input type="number" placeholder="Near expiry days" value={cfg.inventory.nearExpiryDays}
+                onChange={(e) => setCfg((c) => deepMerge(c, { inventory: { nearExpiryDays: Number(e.target.value || 0) } }))}/>
             </div>
           )}
         </div>
@@ -290,24 +240,18 @@ export default function FeatureConfigurator() {
           <label className="flex items-center justify-between gap-4">
             <span>Enable Appointments module</span>
             <span className="switch">
-              <input
-                type="checkbox"
-                checked={cfg.appointments.enabled}
+              <input type="checkbox" checked={cfg.appointments.enabled}
                 onChange={(e) =>
                   setCfg((c) => deepMerge(c, { appointments: { enabled: e.target.checked, singleDoctor: true } }))
-                }
-              />
+                }/>
               <span className="knob" />
             </span>
           </label>
           <label className="flex items-center justify-between gap-4">
             <span>Single Doctor Scheduling</span>
             <span className="switch">
-              <input
-                type="checkbox"
-                checked={cfg.appointments.singleDoctor}
-                onChange={(e) => setCfg((c) => deepMerge(c, { appointments: { singleDoctor: e.target.checked } }))}
-              />
+              <input type="checkbox" checked={cfg.appointments.singleDoctor}
+                onChange={(e) => setCfg((c) => deepMerge(c, { appointments: { singleDoctor: e.target.checked } }))}/>
               <span className="knob" />
             </span>
           </label>
@@ -318,22 +262,16 @@ export default function FeatureConfigurator() {
           <label className="flex items-center justify-between gap-4">
             <span>Billing + GST invoices</span>
             <span className="switch">
-              <input
-                type="checkbox"
-                checked={cfg.billing.enabled}
-                onChange={(e) => setCfg((c) => deepMerge(c, { billing: { enabled: e.target.checked } }))}
-              />
+              <input type="checkbox" checked={cfg.billing.enabled}
+                onChange={(e) => setCfg((c) => deepMerge(c, { billing: { enabled: e.target.checked } }))}/>
               <span className="knob" />
             </span>
           </label>
           <label className="flex items-center justify-between gap-4">
             <span>Staff Attendance (simple)</span>
             <span className="switch">
-              <input
-                type="checkbox"
-                checked={cfg.staff.attendanceSimple}
-                onChange={(e) => setCfg((c) => deepMerge(c, { staff: { attendanceSimple: e.target.checked } }))}
-              />
+              <input type="checkbox" checked={cfg.staff.attendanceSimple}
+                onChange={(e) => setCfg((c) => deepMerge(c, { staff: { attendanceSimple: e.target.checked } }))}/>
               <span className="knob" />
             </span>
           </label>
@@ -348,9 +286,7 @@ export default function FeatureConfigurator() {
           <div>Add-ons: ₹<PriceCell value={addons} /></div>
           <div>Discount: ₹<PriceCell value={discount} /></div>
           <div>GST: ₹<PriceCell value={gst} /></div>
-          <div>
-            <b>Total: ₹<PriceCell value={total} /></b>
-          </div>
+          <div><b>Total: ₹<PriceCell value={total} /></b></div>
         </div>
       </div>
 
