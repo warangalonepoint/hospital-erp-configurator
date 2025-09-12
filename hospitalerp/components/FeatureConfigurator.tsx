@@ -11,7 +11,7 @@ function PriceCell({ value }: { value: number }) {
 }
 
 /* ---------- Types ---------- */
-// Make branding fields optional so partial updates like { address: "..." } type-check.
+// Branding fields optional so partial updates type-check.
 type Branding = {
   clinicName?: string;
   address?: string;
@@ -203,12 +203,16 @@ export default function FeatureConfigurator() {
             <input
               placeholder="Quote Number"
               value={cfg.quote.number}
-              onChange={(e) => setCfg((c) => deepMerge(c, { quote: { number: e.target.value } }))}
+              onChange={(e) =>
+                setCfg((c) => deepMerge(c, { quote: { ...c.quote, number: e.target.value } }))
+              }
             />
             <input
               type="date"
               value={cfg.quote.date}
-              onChange={(e) => setCfg((c) => deepMerge(c, { quote: { date: e.target.value } }))}
+              onChange={(e) =>
+                setCfg((c) => deepMerge(c, { quote: { ...c.quote, date: e.target.value } }))
+              }
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -217,7 +221,9 @@ export default function FeatureConfigurator() {
               type="number"
               value={cfg.quote.discountPct}
               onChange={(e) =>
-                setCfg((c) => deepMerge(c, { quote: { discountPct: Number(e.target.value || 0) } }))
+                setCfg((c) =>
+                  deepMerge(c, { quote: { ...c.quote, discountPct: Number(e.target.value || 0) } })
+                )
               }
             />
           </div>
@@ -255,6 +261,31 @@ export default function FeatureConfigurator() {
               onChange={(e) => setCfg((c) => deepMerge(c, { inventory: { enabled: e.target.checked } }))}
             />
           </label>
+
+          {cfg.inventory.enabled && (
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                placeholder="Low stock threshold"
+                value={cfg.inventory.lowStockThreshold}
+                onChange={(e) =>
+                  setCfg((c) =>
+                    deepMerge(c, { inventory: { lowStockThreshold: Number(e.target.value || 0) } })
+                  )
+                }
+              />
+              <input
+                type="number"
+                placeholder="Near expiry days"
+                value={cfg.inventory.nearExpiryDays}
+                onChange={(e) =>
+                  setCfg((c) =>
+                    deepMerge(c, { inventory: { nearExpiryDays: Number(e.target.value || 0) } })
+                  )
+                }
+              />
+            </div>
+          )}
         </div>
 
         <div className="card space-y-3">
@@ -264,7 +295,9 @@ export default function FeatureConfigurator() {
             <input
               type="checkbox"
               checked={cfg.appointments.enabled}
-              onChange={(e) => setCfg((c) => deepMerge(c, { appointments: { enabled: e.target.checked } }))}
+              onChange={(e) =>
+                setCfg((c) => deepMerge(c, { appointments: { enabled: e.target.checked } }))
+              }
             />
           </label>
           <label className="flex items-center justify-between gap-4">
@@ -272,7 +305,9 @@ export default function FeatureConfigurator() {
             <input
               type="checkbox"
               checked={cfg.appointments.singleDoctor}
-              onChange={(e) => setCfg((c) => deepMerge(c, { appointments: { singleDoctor: e.target.checked } }))}
+              onChange={(e) =>
+                setCfg((c) => deepMerge(c, { appointments: { singleDoctor: e.target.checked } }))
+              }
             />
           </label>
         </div>
@@ -292,7 +327,9 @@ export default function FeatureConfigurator() {
             <input
               type="checkbox"
               checked={cfg.staff.attendanceSimple}
-              onChange={(e) => setCfg((c) => deepMerge(c, { staff: { attendanceSimple: e.target.checked } }))}
+              onChange={(e) =>
+                setCfg((c) => deepMerge(c, { staff: { attendanceSimple: e.target.checked } }))
+              }
             />
           </label>
         </div>
