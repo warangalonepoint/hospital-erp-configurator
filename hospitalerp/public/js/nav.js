@@ -20,6 +20,8 @@ function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Ar
   };
   cfg = deepMerge(cfg||{}, defaults);
   localStorage.setItem("erpConfig", JSON.stringify(cfg));
+// after: cfg = deepMerge(cfg||{}, defaults);
+document.documentElement.style.setProperty("--prim", cfg.branding.primaryColor || "#0ea5e9");
 
   // 2) Sidebar (config-aware)
   const menu = [
