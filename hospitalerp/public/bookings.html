@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Appointments & Slots</title>
+<link rel="icon" href="./assets/logo.png">
+<style>
+  :root{ --bg:#0b0b10; --card:#14141d; --line:#1f1f29; --mut:#a1a1aa; --prim:#0ea5e9; }
+  *{box-sizing:border-box} body{margin:0;font-family:system-ui;background:var(--bg);color:#fff}
+  header{display:flex;gap:10px;align-items:center;padding:12px 16px;background:#0d0d13;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:16px;flex:1}
+  .wrap{padding:16px}
+  .card{background:var(--card);border:1px solid #2a2a36;border-radius:14px;padding:16px}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:900px){.grid{grid-template-columns:260px 1fr}}
+  input,select,button{padding:10px 12px;border-radius:10px;border:1px solid #2a2a36;background:#0f0f16;color:#fff}
+  .btn{cursor:pointer} .btn.primary{background:var(--prim);border-color:transparent;color:#001019;font-weight:600}
+  .slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+  .slot{padding:10px 12px;border:1px solid #2a2a36;border-radius:10px;background:#10101a}
+  .slot.free{border-color:#2a2a36} .slot.booked{border-color:#0ea5e9;background:#0e2430}
+  .slot.blocked{opacity:.5}
+  .row{display:flex;gap:8px;align-items:center}
+  .mut{color:var(--mut);font-size:12px}
+  .tag{font-size:11px;padding:2px 6px;border-radius:999px;border:1px solid #2a2a36}
+  .tag.booked{background:#0e2430;border-color:#0ea5e9;color:#a5e8ff}
+</style>
+</head>
+<body>
+<header>
+  <h1>Appointments & Slots</h1>
+  <button class="btn" onclick="location.href='patients.html'+location.search">Patients</button>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+    <div class="card">
+      <div class="row">
+        <select id="docSel"></select>
+        <input type="date" id="dateSel">
+      </div>
+      <div class="row">
+        <input id="start" value="09:00" title="Start"/>
+        <input id="end" value="13:00" title="End"/>
+        <input id="len" type="number" value="15" title="Minutes" style="width:90px"/>
+        <button class="btn" id="genBtn">Generate Slots</button>
+      </div>
+      <div class="mut">Tip: set your default doctor in Configurator later. For now, we remember last used.</div>
+    </div>
+
+    <div class="card" id="dayWrap">
+      <div class="row" style="justify-content:space-between">
+        <div><b id="dayTitle"></b> <span class="mut" id="stats"></span></div>
+        <div><button class="btn primary" id="refreshBtn">Refresh</button></div>
+      </div>
+      <div id="slots" class="slots" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Book Dialog -->
+<dialog id="bookDlg">
+  <form method="dialog" id="bookForm" style="background:#0c0c12;color:#fff;border:1px solid #2a2a36;border-radius:14px;padding:16px;min-width:320px">
+    <h3 style="margin-top:0">Book Appointment</h3>
+    <div class="mut" id="whenTxt"></div>
+    <div style="margin-top:8px"><label>Patient
+      <select id="patSel"></select>
+    </label></div>
+    <div class="row" style="margin-top:8px">
+      <input id="patName" placeholder="or New Patient Name" style="flex:1">
+      <input id="patPhone" placeholder="Phone" style="flex:1">
+    </div>
+    <div style="margin-top:8px"><input id="notes" placeholder="Notes (optional)"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn">Cancel</button>
+      <button class="btn primary" id="bookBtn">Book</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="./js/scheduler.js"></script>
+<script>
+// pull Patients (from S1) to populate dropdown
+async function listPatients(){
+  await SchedulerAPI.schedOpen();
+  return new Promise((res)=>{
+    const req = indexedDB.open("hospital_erp_db"); // same DB
+    req.onsuccess = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains("patients")) return res([]);
+      const tx = db.transaction("patients","readonly").objectStore("patients").getAll();
+      tx.onsuccess = (e)=>res(e.target.result||[]);
+    };
+    req.onerror = ()=>res([]);
+  });
+}
+
+const docSel = document.getElementById("docSel");
+const dateSel = document.getElementById("dateSel");
+const start = document.getElementById("start");
+const end = document.getElementById("end");
+const len = document.getElementById("len");
+const genBtn = document.getElementById("genBtn");
+const refreshBtn = document.getElementById("refreshBtn");
+const dayTitle = document.getElementById("dayTitle");
+const stats = document.getElementById("stats");
+const slotsDiv = document.getElementById("slots");
+
+const today = new Date().toISOString().slice(0,10);
+dateSel.value = new URL(location.href).searchParams.get("date") || today;
+
+let currentDoctorId = null;
+
+async function ensureDoctorsSeed(){
+  const docs = await SchedulerAPI.listDoctors();
+  if (!docs.length) {
+    const def = ["Dr. A. Singh", "Dr. Meera", "Dr. Karthik"];
+    for (const n of def) await SchedulerAPI.addDoctor({ name:n });
+  }
+}
+
+async function loadDoctors(){
+  await ensureDoctorsSeed();
+  const docs = await SchedulerAPI.listDoctors();
+  docSel.innerHTML = docs.map(d=>`<option value="${d.id}">${d.name}</option>`).join("");
+  const saved = Number(localStorage.getItem("lastDoctorId")||0);
+  currentDoctorId = saved && docs.find(d=>d.id===saved) ? saved : docs[0]?.id;
+  if (currentDoctorId) docSel.value = String(currentDoctorId);
+}
+
+function fmtPrettyDate(d){ const x=new Date(d+"T00:00:00"); return x.toLocaleDateString(undefined, { weekday:"short", year:'numeric', month:'short', day:'numeric' }); }
+
+async function renderDay(){
+  const d = dateSel.value;
+  currentDoctorId = Number(docSel.value);
+  if (!currentDoctorId) return;
+  localStorage.setItem("lastDoctorId", String(currentDoctorId));
+
+  dayTitle.textContent = `${docSel.selectedOptions[0].text} — ${fmtPrettyDate(d)}`;
+
+  const slots = await SchedulerAPI.listSlots(currentDoctorId, d);
+  const appts = await SchedulerAPI.listApptsByDoctorDate(currentDoctorId, d);
+
+  stats.textContent = `Slots: ${slots.length} • Booked: ${appts.filter(a=>a.status==='booked').length}`;
+
+  slotsDiv.innerHTML = slots.map(s=>{
+    const badge = s.status==="booked" ? `<span class="tag booked">Booked</span>` : "";
+    return `<div class="slot ${s.status}">
+      <div style="font-weight:600">${s.time}</div>
+      <div class="mut">${s.len} min</div>
+      <div>${badge}</div>
+      <div style="margin-top:8px">
+        ${s.status==="free"
+          ? `<button class="btn" onclick="openBook(${s.id},'${d}','${s.time}')">Book</button>`
+          : `<button class="btn" onclick="openCancel(${s.id})">Cancel</button>`
+        }
+      </div>
+    </div>`;
+  }).join("") || `<div class="mut">No slots yet. Generate on the left.</div>`;
+}
+
+genBtn.onclick = async ()=>{
+  const doctorId = Number(docSel.value);
+  if (!doctorId) return alert("Select a doctor");
+  await SchedulerAPI.bulkCreateSlots({
+    doctorId,
+    date: dateSel.value,
+    start: start.value || "09:00",
+    end: end.value || "13:00",
+    len: Number(len.value||15)
+  });
+  renderDay();
+};
+refreshBtn.onclick = renderDay;
+docSel.onchange = renderDay;
+dateSel.onchange = renderDay;
+
+const dlg = document.getElementById("bookDlg");
+const patSel = document.getElementById("patSel");
+const patName = document.getElementById("patName");
+const patPhone = document.getElementById("patPhone");
+const notes = document.getElementById("notes");
+const whenTxt = document.getElementById("whenTxt");
+const bookBtn = document.getElementById("bookBtn");
+
+let pendingSlotId = null;
+
+window.openBook = async (slotId, date, time)=>{
+  pendingSlotId = slotId;
+  whenTxt.textContent = `Slot: ${date} @ ${time}`;
+  const patients = await listPatients();
+  patSel.innerHTML = `<option value="">Select existing patient</option>` + patients.map(p=>`<option value="${p.id}">${p.name} — ${p.uid||""}</option>`).join("");
+  patName.value = ""; patPhone.value = ""; notes.value = "";
+  dlg.showModal();
+};
+bookBtn.onclick = async (e)=>{
+  e.preventDefault();
+  const pid = patSel.value ? Number(patSel.value) : null;
+  const pname = patSel.value ? patSel.selectedOptions[0].text.split(" — ")[0] : patName.value.trim();
+  if (!pname) return alert("Enter patient name or select one");
+  await SchedulerAPI.bookSlot({
+    slotId: pendingSlotId,
+    patientId: pid,
+    patientName: pname,
+    phone: patPhone.value.trim(),
+    notes: notes.value.trim()
+  });
+  dlg.close();
+  renderDay();
+};
+window.openCancel = async (slotId)=>{
+  // find appt by slot
+  const doctorId = Number(docSel.value), date = dateSel.value;
+  const appts = await SchedulerAPI.listApptsByDoctorDate(doctorId, date);
+  const appt = appts.find(a=>a.slotId===Number(slotId) && a.status==="booked");
+  if (!appt) return alert("No appointment found for this slot");
+  if (!confirm("Cancel this appointment?")) return;
+  await SchedulerAPI.cancelAppt(appt.id);
+  renderDay();
+};
+
+(async function init(){
+  await SchedulerAPI.schedOpen();
+  await loadDoctors();
+  await renderDay();
+})();
+</script>
+</body>
+</html>
