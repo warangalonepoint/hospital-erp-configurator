@@ -1,195 +1,119 @@
-// ========================= Config Loader =========================
-window.erp = (function () {
-  function decodeCfg(b64) {
-    try { return JSON.parse(atob(decodeURIComponent(b64))); } catch { return null; }
-  }
-  const url = new URL(location.href);
-  const cfgB64 = url.searchParams.get("cfg");
-  let config = cfgB64 ? decodeCfg(cfgB64) : null;
-  if (!config) {
-    try { config = JSON.parse(localStorage.getItem("erpConfig") || "{}"); } catch { config = {}; }
-  }
-  const defaults = {
-    inventory: { enabled: true, lowStockThreshold: 10, nearExpiryDays: 60 },
-    branding: { clinicName: "Clinic", primaryColor: "#0ea5e9" }
-  };
-  function deepMerge(a, b) {
-    for (const k in b) {
-      if (b[k] && typeof b[k] === "object" && !Array.isArray(b[k])) {
-        a[k] = deepMerge(a[k] || {}, b[k]);
-      } else {
-        if (a[k] === undefined) a[k] = b[k];
-      }
-    }
-    return a;
-  }
-  return deepMerge(config || {}, defaults);
-})();
+// --- inventory.js ---
+// Offline IndexedDB + FEFO inventory
 
-// ========================= IndexedDB Setup =========================
-const DB_NAME = "hospital_erp_db";
-const DB_VERSION = 2;
+const dbName = "hospital_erp_db";
 let db;
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (ev) => {
-      const d = ev.target.result;
+async function openDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(dbName, 1);
+    r.onupgradeneeded = (e) => {
+      const d = e.target.result;
       if (!d.objectStoreNames.contains("items")) {
-        const s = d.createObjectStore("items", { keyPath: "id", autoIncrement: true });
-        s.createIndex("name", "name", { unique: false });
-        s.createIndex("barcode", "barcode", { unique: false });
+        d.createObjectStore("items", { keyPath: "id", autoIncrement: true });
       }
       if (!d.objectStoreNames.contains("batches")) {
         const s = d.createObjectStore("batches", { keyPath: "id", autoIncrement: true });
-        s.createIndex("itemId", "itemId");
-        s.createIndex("expiry", "expiry");
-      }
-      if (!d.objectStoreNames.contains("stock_moves")) {
-        const s = d.createObjectStore("stock_moves", { keyPath: "id", autoIncrement: true });
-        s.createIndex("itemId", "itemId");
-        s.createIndex("ts", "ts");
-        s.createIndex("type", "type");
-      }
-      if (!d.objectStoreNames.contains("suppliers")) {
-        d.createObjectStore("suppliers", { keyPath: "id", autoIncrement: true });
+        s.createIndex("itemId", "itemId", { unique: false });
       }
     };
-    req.onsuccess = () => { db = req.result; resolve(db); };
-    req.onerror = () => reject(req.error);
+    r.onsuccess = () => { db = r.result; res(db); };
+    r.onerror = (e) => rej(e);
   });
 }
 
-function tx(storeNames, mode = "readonly") {
-  return db.transaction(storeNames, mode);
-}
-
-// ========================= Helpers =========================
-function fmtDate(d) { return new Date(d).toISOString().slice(0, 10); }
-function daysBetween(a, b) { return Math.ceil((new Date(b) - new Date(a)) / (1000 * 60 * 60 * 24)); }
-
-// ========================= Items / Batches =========================
-async function addItem(item) {
-  await openDB();
-  const t = tx(["items"], "readwrite");
-  return new Promise((res, rej) => {
-    const req = t.objectStore("items").add(item);
-    req.onsuccess = () => res(req.result);
-    req.onerror = () => rej(req.error);
+// ==== Items ====
+async function addItem(it) {
+  const tx = db.transaction("items", "readwrite");
+  return new Promise((res) => {
+    tx.objectStore("items").add(it).onsuccess = (e) => res(e.target.result);
   });
 }
-
 async function listItems() {
-  await openDB();
-  return new Promise((res, rej) => {
-    const out = [];
-    const r = tx(["items"]).objectStore("items").openCursor();
-    r.onsuccess = e => { const c = e.target.result; if (c) { out.push(c.value); c.continue(); } else res(out); };
-    r.onerror = () => rej(r.error);
+  return new Promise((res) => {
+    db.transaction("items").objectStore("items").getAll().onsuccess = (e) => res(e.target.result);
   });
 }
-
 async function getItem(id) {
-  await openDB();
-  return new Promise((res, rej) => {
-    const r = tx(["items"]).objectStore("items").get(Number(id));
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
+  return new Promise((res) => {
+    db.transaction("items").objectStore("items").get(id).onsuccess = (e) => res(e.target.result);
   });
 }
 
-async function addBatch(batch) {
-  await openDB();
-  const t = tx(["batches"], "readwrite");
-  return new Promise((res, rej) => {
-    const r = t.objectStore("batches").add(batch);
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
+// ==== Batches ====
+async function addBatch(b) {
+  const tx = db.transaction("batches", "readwrite");
+  return new Promise((res) => {
+    tx.objectStore("batches").add(b).onsuccess = (e) => res(e.target.result);
+  });
+}
+async function listBatches(itemId) {
+  return new Promise((res) => {
+    const idx = db.transaction("batches").objectStore("batches").index("itemId");
+    const r = idx.getAll(IDBKeyRange.only(itemId));
+    r.onsuccess = (e) => res(e.target.result);
   });
 }
 
-async function listBatchesByItem(itemId) {
-  await openDB();
-  return new Promise((res, rej) => {
-    const out = [];
-    const idx = tx(["batches"]).objectStore("batches").index("itemId").openCursor(IDBKeyRange.only(Number(itemId)));
-    idx.onsuccess = e => { const c = e.target.result; if (c) { out.push(c.value); c.continue(); } else res(out); };
-    idx.onerror = () => rej(idx.error);
-  });
-}
-
-async function addMove(move) {
-  await openDB();
-  const t = tx(["stock_moves"], "readwrite");
-  return new Promise((res, rej) => {
-    const r = t.objectStore("stock_moves").add(move);
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-  });
-}
-
-// ========================= Stock Logic =========================
-async function issueStock(itemId, qty, ref = "SALE") {
-  const batches = (await listBatchesByItem(itemId)).sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
+// ==== FEFO: issue stock ====
+async function issueStock(itemId, qty, ref = "") {
+  const batches = await listBatches(itemId);
+  batches.sort((a, b) => new Date(a.expiry) - new Date(b.expiry));
   let remain = qty;
   for (const b of batches) {
     if (remain <= 0) break;
     const take = Math.min(b.qty, remain);
-    b.qty -= take; remain -= take;
-    await updateBatch(b.id, { qty: b.qty });
-    await addMove({ type: "sale", itemId: Number(itemId), batchId: b.id, qty: take, ref, ts: Date.now() });
+    b.qty -= take;
+    remain -= take;
+    await new Promise((res) => {
+      db.transaction("batches", "readwrite").objectStore("batches").put(b).onsuccess = () => res();
+    });
   }
   if (remain > 0) throw new Error("Insufficient stock");
 }
 
-async function updateBatch(id, patch) {
-  await openDB();
-  const t = tx(["batches"], "readwrite"); const store = t.objectStore("batches");
-  const current = await new Promise((res, rej) => { const r = store.get(Number(id)); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
-  const updated = { ...current, ...patch };
-  return new Promise((res, rej) => { const r = store.put(updated); r.onsuccess = () => res(true); r.onerror = () => rej(r.error); });
-}
-
-async function currentQty(itemId) {
-  const batches = await listBatchesByItem(itemId);
-  return batches.reduce((s, b) => s + (b.qty || 0), 0);
-}
-
+// ==== Snapshot (qty + flags) ====
 async function stockSnapshot() {
   const items = await listItems();
-  const rows = [];
+  const out = [];
   for (const it of items) {
-    const batches = await listBatchesByItem(it.id);
-    const qty = batches.reduce((s, b) => s + (b.qty || 0), 0);
-    const nearExpDays = window.erp.inventory.nearExpiryDays;
-    const near = batches.filter(b => daysBetween(new Date(), b.expiry) <= nearExpDays && b.qty > 0);
-    const low = qty <= (window.erp.inventory.lowStockThreshold || 10);
-    rows.push({ item: it, qty, batches, low, nearCount: near.length });
+    const bs = await listBatches(it.id);
+    let qty = 0;
+    let nearExp = false;
+    const now = new Date();
+    const nearDays = (JSON.parse(localStorage.erpConfig || "{}").inventory?.nearExpiryDays) || 60;
+    for (const b of bs) {
+      qty += b.qty;
+      const exp = new Date(b.expiry);
+      if (b.qty > 0 && exp - now < nearDays * 864e5) nearExp = true;
+    }
+    out.push({ item: it, qty, batches: bs, nearExp });
   }
-  return rows;
+  return out;
 }
 
-// ========================= CSV / Print =========================
-function toCSV(rows) {
-  const header = ["Item","HSN","Unit","Tax%","MRP","BuyPrice","Qty","NearExpiryBatches"];
-  const lines = [header.join(",")];
-  rows.forEach(r => {
-    lines.push([
-      `"${r.item.name}"`,
-      r.item.hsn || "",
-      r.item.unit || "",
-      r.item.tax || 0,
-      r.item.mrp || 0,
-      r.item.buyPrice || 0,
-      r.qty,
-      r.nearCount
-    ].join(","));
+// ==== CSV Export ====
+async function exportCSV() {
+  const snap = await stockSnapshot();
+  let rows = [["Item", "HSN", "MRP", "Qty", "Batch", "Expiry", "Buy Price"]];
+  snap.forEach(r => {
+    r.batches.forEach(b => {
+      rows.push([
+        r.item.name,
+        r.item.hsn || "",
+        r.item.mrp || "",
+        b.qty,
+        b.batchNo || "",
+        b.expiry || "",
+        b.buyPrice || ""
+      ]);
+    });
   });
-  return lines.join("\n");
+  const csv = rows.map(r => r.join(",")).join("\n");
+  download("inventory.csv", csv);
 }
 
-// ✅ Fixed download function
+// ==== File download helper (fixed for iframe/mobile) ====
 function download(filename, text) {
   const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -197,7 +121,7 @@ function download(filename, text) {
   a.style.display = "none";
   a.href = url;
   a.download = filename;
-  document.body.appendChild(a);   // needed for mobile
+  document.body.appendChild(a);
   a.click();
   setTimeout(() => {
     document.body.removeChild(a);
@@ -205,28 +129,14 @@ function download(filename, text) {
   }, 0);
 }
 
-// ========================= Labels =========================
-function printShelfLabel(item) {
-  const w = window.open("", "_blank", "width=400,height=240");
-  w.document.write(`
-    <html><body style="font-family:system-ui;padding:16px">
-      <div style="border:1px dashed #000;padding:12px">
-        <div style="font-weight:700">${window.erp.branding?.clinicName || "Clinic"}</div>
-        <div style="font-size:20px">${item.name}</div>
-        <div>HSN: ${item.hsn || "-"} • Unit: ${item.unit || "-"}</div>
-        <div>MRP: ₹${item.mrp || 0}</div>
-        <div style="margin-top:8px">Barcode: ${item.barcode || "-"}</div>
-      </div>
-      <script>window.print();<\/script>
-    </body></html>
-  `);
-  w.document.close();
+// ==== Alerts ====
+async function showAlerts() {
+  const snap = await stockSnapshot();
+  const thr = (JSON.parse(localStorage.erpConfig || "{}").inventory?.lowStockThreshold) || 10;
+  const low = snap.filter(r => r.qty <= thr);
+  const near = snap.filter(r => r.nearExp);
+  alert(`Low stock:\n${low.map(r => r.item.name + " (" + r.qty + ")").join("\n") || "None"}\n\nNear expiry:\n${near.map(r => r.item.name).join("\n") || "None"}`);
 }
 
-// ========================= Expose API =========================
-window.InventoryAPI = {
-  openDB, addItem, listItems, getItem,
-  addBatch, listBatchesByItem, addMove, issueStock, updateBatch,
-  currentQty, stockSnapshot,
-  toCSV, download, printShelfLabel
-};
+// ==== Expose API for UI ====
+window.InventoryAPI = { openDB, addItem, listItems, getItem, addBatch, listBatches, issueStock, stockSnapshot, exportCSV, showAlerts };
