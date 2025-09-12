@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Patients</title>
+<link rel="icon" href="./assets/logo.png">
+<style>
+  :root{ --prim:#0ea5e9; --bg:#0b0b10; --card:#14141d; --line:#1f1f29; --mut:#a1a1aa; }
+  *{box-sizing:border-box} body{margin:0;font-family:system-ui,Segoe UI,Roboto;background:var(--bg);color:#fff}
+  header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#0d0d13;border-bottom:1px solid var(--line)}
+  header h1{flex:1;margin:0;font-size:16px}
+  .btn{background:#1a1a24;border:1px solid #2a2a36;padding:8px 12px;border-radius:10px;color:#fff;cursor:pointer}
+  .btn.primary{background:var(--prim);border-color:transparent;color:#001019;font-weight:600}
+  .btn.ghost{background:transparent}
+  .wrap{padding:16px}
+  .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .search{flex:1;min-width:180px}
+  input,select{width:100%;padding:10px 12px;background:#0f0f16;color:#fff;border:1px solid #2a2a36;border-radius:10px}
+  table{width:100%;border-collapse:collapse;background:var(--card);border-radius:14px;overflow:hidden}
+  th,td{padding:12px;border-bottom:1px solid var(--line);text-align:left;font-size:14px}
+  tr:last-child td{border-bottom:none}
+  .empty{padding:40px;text-align:center;color:var(--mut)}
+  .badge{font-size:11px;color:#111;background:#a5f3fc;padding:2px 6px;border-radius:999px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Patients <span class="badge">Basic</span></h1>
+  <button class="btn primary" id="addBtn">Add Patient</button>
+</header>
+
+<div class="wrap">
+  <div class="tools">
+    <div class="search"><input id="q" placeholder="Search name, phone or ID…"></div>
+  </div>
+  <div id="tableWrap"></div>
+</div>
+
+<!-- Add/Edit Patient Modal -->
+<dialog id="patDlg">
+  <form method="dialog" id="patForm" style="background:#0c0c12;color:#fff;border:1px solid #2a2a36;border-radius:14px;padding:16px;min-width:320px">
+    <h3 id="dlgTitle" style="margin:0 0 12px">New Patient</h3>
+    <div><label>Name<input name="name" required></label></div>
+    <div><label>Age<input name="age" type="number"></label></div>
+    <div><label>Gender<select name="gender"><option>Male</option><option>Female</option><option>Other</option></select></label></div>
+    <div><label>Phone<input name="phone"></label></div>
+    <div><label>Notes<input name="notes"></label></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button class="btn ghost" value="cancel">Cancel</button>
+      <button class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script>
+const dbName = "hospital_erp_db";
+let db;
+async function openDB(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(dbName,1);
+    r.onupgradeneeded=e=>{
+      const d=e.target.result;
+      if(!d.objectStoreNames.contains("patients")){
+        const s=d.createObjectStore("patients",{keyPath:"id",autoIncrement:true});
+      }
+    };
+    r.onsuccess=()=>{db=r.result;res(db)};
+    r.onerror=e=>rej(e);
+  });
+}
+async function addPatient(p){
+  const tx=db.transaction("patients","readwrite");const st=tx.objectStore("patients");
+  return new Promise((res,rej)=>{st.add(p).onsuccess=e=>res(e.target.result)});
+}
+async function listPatients(){
+  const tx=db.transaction("patients","readonly");const st=tx.objectStore("patients");
+  return new Promise((res,rej)=>{st.getAll().onsuccess=e=>res(e.target.result)});
+}
+async function updatePatient(p){
+  const tx=db.transaction("patients","readwrite");tx.objectStore("patients").put(p);
+}
+async function getPatient(id){
+  return new Promise((res,rej)=>{db.transaction("patients").objectStore("patients").get(id).onsuccess=e=>res(e.target.result)});
+}
+
+function genUID(){
+  const now=new Date();
+  const y=now.getFullYear(), m=("0"+(now.getMonth()+1)).slice(-2);
+  const rand=Math.floor(Math.random()*9000+1000);
+  return `CUS-${y}${m}-${rand}`;
+}
+
+async function render(){
+  const q=document.getElementById("q").value.toLowerCase();
+  const list=await listPatients();
+  const filtered=list.filter(p=>p.name.toLowerCase().includes(q)|| (p.phone||"").includes(q)||(p.uid||"").includes(q));
+  const tbl=document.createElement("table");
+  tbl.innerHTML=`<thead><tr><th>Name</th><th>UID</th><th>Phone</th><th>Age/Gender</th><th>QR</th><th></th></tr></thead>
+  <tbody>${filtered.map(p=>`
+    <tr>
+      <td><b>${p.name}</b></td>
+      <td>${p.uid}</td>
+      <td>${p.phone||"-"}</td>
+      <td>${p.age||"-"} / ${p.gender||"-"}</td>
+      <td><canvas id="qr-${p.id}"></canvas></td>
+      <td><button class="btn" onclick="printQR(${p.id})">Print</button></td>
+    </tr>`).join("")||`<tr><td colspan=6 class="empty">No patients</td></tr>`}
+  </tbody>`;
+  document.getElementById("tableWrap").innerHTML=""; document.getElementById("tableWrap").appendChild(tbl);
+  // draw QR
+  filtered.forEach(p=>{ if(p.id) QRCode.toCanvas(document.getElementById("qr-"+p.id), p.uid,{width:60}); });
+}
+async function printQR(id){
+  const p=await getPatient(id); const w=window.open("","print","width=400,height=400");
+  w.document.write(`<h3>${p.name}</h3><p>${p.uid}</p><canvas id="c"></canvas>`);
+  w.document.close();
+  QRCode.toCanvas(w.document.getElementById("c"),p.uid,{width:200},()=>w.print());
+}
+
+openDB().then(render);
+
+const dlg=document.getElementById("patDlg");
+document.getElementById("addBtn").onclick=()=>{document.getElementById("dlgTitle").textContent="New Patient"; dlg.showModal();};
+document.getElementById("patForm").onsubmit=async e=>{
+  e.preventDefault(); const f=new FormData(e.target);
+  const p={name:f.get("name"),age:f.get("age"),gender:f.get("gender"),phone:f.get("phone"),notes:f.get("notes"),uid:genUID()};
+  await addPatient(p); dlg.close(); e.target.reset(); render();
+};
+document.getElementById("q").oninput=render;
+</script>
+</body>
+</html>
