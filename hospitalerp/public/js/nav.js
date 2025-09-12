@@ -27,7 +27,7 @@ function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Ar
     { key:"pharmacy",  label:"Pharmacy",            href:"pharmacy.html",         show: ()=>cfg.inventory.enabled },
     { key:"grn",       label:"GRN (Add Stock)",     href:"inventory-grn.html",    show: ()=>cfg.inventory.enabled },
     { key:"billing",   label:"Billing",             href:"billing.html",          show: ()=>cfg.billing.enabled },
-    // Configurator is a Next.js route, not a static file → open directly (no cfg params)
+    // Next.js route, open as-is (no cfg params)
     { key:"config",    label:"Configurator",        href:"/configurator",         external:true }
   ];
 
@@ -37,18 +37,17 @@ function deepMerge(a,b){ for(const k in b){ if(b[k]&&typeof b[k]==="object"&&!Ar
   ul.className = "nav";
 
   function linkFor(item){
-    if(item.external) return item.href;             // open Next route as-is
+    if(item.external) return item.href;
     const u = new URL(item.href, location.origin);
     u.search = qpCfg;
     return u.toString();
   }
 
   menu.forEach(it=>{
-    if(it.show && !it.show()) return;              // hide if feature disabled
+    if(it.show && !it.show()) return;
     const li = document.createElement("li");
     const a = document.createElement("a");
-    a.href = "#";
-    a.textContent = it.label;
+    a.href = "#"; a.textContent = it.label;
     a.dataset.href = linkFor(it);
     a.onclick = (e)=>{ e.preventDefault(); setActive(a); loadPage(it); };
     li.appendChild(a); ul.appendChild(li);
