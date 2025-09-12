@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import ThemeToggle from "./ThemeToggle";
 
-/* ---------- Client-only number formatter to avoid hydration mismatch ---------- */
+/* ---------- Hydration-safe formatter ---------- */
 function PriceCell({ value }: { value: number }) {
   const [formatted, setFormatted] = useState<string>("");
-  useEffect(() => {
-    setFormatted(value.toLocaleString("en-IN"));
-  }, [value]);
+  useEffect(() => setFormatted(value.toLocaleString("en-IN")), [value]);
   return <span suppressHydrationWarning>{formatted || value}</span>;
 }
 
@@ -17,8 +16,7 @@ type PatientsCfg = { enabled: boolean };
 type InventoryCfg = { enabled: boolean; lowStockThreshold: number; nearExpiryDays: number };
 type BillingCfg = { enabled: boolean; gstPercent: number };
 type StaffCfg = { attendanceSimple: boolean };
-type AppointmentsCfg = { singleDoctor: boolean };
-
+type AppointmentsCfg = { enabled: boolean; singleDoctor: boolean };
 type Config = {
   branding: Branding;
   patients: PatientsCfg;
@@ -30,14 +28,14 @@ type Config = {
   pricingMode: "tiered" | "custom";
 };
 
-/* ---------- Defaults (keep in sync with shell) ---------- */
+/* ---------- Defaults (sync with shell) ---------- */
 const DEFAULT_CONFIG: Config = {
   branding: { clinicName: "Clinic", primaryColor: "#0ea5e9" },
   patients: { enabled: true },
   inventory: { enabled: true, lowStockThreshold: 10, nearExpiryDays: 60 },
   billing: { enabled: false, gstPercent: 18 },
   staff: { attendanceSimple: false },
-  appointments: { singleDoctor: true },
+  appointments: { enabled: true, singleDoctor: true },
   quote: { number: "Q-20250101-001", date: "2025-01-01", discountPct: 0 },
   pricingMode: "tiered",
 };
@@ -51,9 +49,7 @@ function deepMerge<T>(base: T, patch: Partial<T>): T {
   }
   return out as T;
 }
-function b64(json: any) {
-  return encodeURIComponent(btoa(typeof json === "string" ? json : JSON.stringify(json)));
-}
+const b64 = (json: any) => encodeURIComponent(btoa(typeof json === "string" ? json : JSON.stringify(json)));
 function useStableNowISO() {
   const ref = useRef<string>();
   if (!ref.current) ref.current = new Date().toISOString();
@@ -63,10 +59,9 @@ function useStableQuoteNumber(prefix = "Q") {
   const ref = useRef<string>();
   if (!ref.current) {
     const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    ref.current = `${prefix}-${y}${m}${dd}-001`;
+    ref.current = `${prefix}-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(
+      d.getDate()
+    ).padStart(2, "0")}-001`;
   }
   return ref.current;
 }
@@ -76,21 +71,16 @@ export default function FeatureConfigurator() {
   const nowISO = useStableNowISO();
   const defaultQuote = useStableQuoteNumber();
 
-  // 1) Load config from localStorage on first render (client)
+  // load once from localStorage and seed sensible defaults
   const [cfg, setCfg] = useState<Config>(() => {
     try {
       const raw = localStorage.getItem("erpConfig");
-      if (!raw) {
-        // first boot: stamp date + quote
-        const seeded = deepMerge(DEFAULT_CONFIG, {
-          quote: { number: defaultQuote, date: nowISO.slice(0, 10) },
-        });
-        localStorage.setItem("erpConfig", JSON.stringify(seeded));
-        return seeded;
-      }
-      const parsed = JSON.parse(raw);
-      // merge with defaults so new keys appear without nuking user data
-      return deepMerge(DEFAULT_CONFIG, parsed);
+      const parsed = raw ? JSON.parse(raw) : {};
+      const merged = deepMerge(DEFAULT_CONFIG, parsed);
+      if (!merged.quote?.number) merged.quote.number = defaultQuote;
+      if (!merged.quote?.date) merged.quote.date = nowISO.slice(0, 10);
+      localStorage.setItem("erpConfig", JSON.stringify(merged));
+      return merged;
     } catch {
       const seeded = deepMerge(DEFAULT_CONFIG, { quote: { number: defaultQuote, date: nowISO.slice(0, 10) } });
       localStorage.setItem("erpConfig", JSON.stringify(seeded));
@@ -98,21 +88,21 @@ export default function FeatureConfigurator() {
     }
   });
 
-  // 2) Persist any change
+  // persist & live-tint brand color
   useEffect(() => {
     localStorage.setItem("erpConfig", JSON.stringify(cfg));
-    // also push brand color into CSS var so the whole UI tints live
     if (cfg.branding?.primaryColor) {
       document.documentElement.style.setProperty("--prim", cfg.branding.primaryColor);
     }
   }, [cfg]);
 
-  // 3) Pricing math (simple)
-  const basePrice = 59999; // clinic base
+  // pricing calc (simple)
+  const basePrice = 59999;
   const addons = useMemo(() => {
     let n = 0;
     if (cfg.billing.enabled) n += 3000;
     if (cfg.staff.attendanceSimple) n += 2000;
+    // appointments currently included in base; price later if needed
     return n;
   }, [cfg.billing.enabled, cfg.staff.attendanceSimple]);
 
@@ -141,9 +131,8 @@ export default function FeatureConfigurator() {
     [cfg]
   );
 
-  // 4) Actions
   const copyShellLink = async () => {
-    const url = `${location.origin}/nav.html?cfg=${b64(cfg)}&page=patients.html`;
+    const url = `${location.origin}/nav.html?cfg=${b64(cfg)}&page=home.html`;
     await navigator.clipboard.writeText(url);
     alert("Shell link copied ✅");
   };
@@ -160,11 +149,13 @@ export default function FeatureConfigurator() {
 
   return (
     <div className="page safe-bottom">
-      {/* Topbar */}
       <div className="topbar">
         <div style={{ fontWeight: 800 }}>🏥 Hospital ERP — Configurator</div>
         <div style={{ flex: 1 }} />
-        <button className="btn-pill" onClick={copyShellLink}>Share Shell Link</button>
+        <ThemeToggle />
+        <button className="btn-pill" onClick={copyShellLink} style={{ marginLeft: 8 }}>
+          Share Shell Link
+        </button>
         <button className="btn-pill" onClick={downloadJson}>Download JSON</button>
       </div>
 
@@ -197,7 +188,9 @@ export default function FeatureConfigurator() {
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm" style={{ color: "var(--text-muted)" }}>Primary Color</label>
+            <label className="text-sm" style={{ color: "var(--text-muted)" }}>
+              Primary Color
+            </label>
             <input
               type="color"
               className="h-10 w-20"
@@ -222,23 +215,23 @@ export default function FeatureConfigurator() {
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm" style={{ color: "var(--text-muted)" }}>Discount %</label>
+            <label className="text-sm" style={{ color: "var(--text-muted)" }}>
+              Discount %
+            </label>
             <input
               type="number"
               value={cfg.quote.discountPct}
-              onChange={(e) =>
-                setCfg((c) => deepMerge(c, { quote: { discountPct: Number(e.target.value || 0) } }))
-              }
+              onChange={(e) => setCfg((c) => deepMerge(c, { quote: { discountPct: Number(e.target.value || 0) } }))}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm" style={{ color: "var(--text-muted)" }}>GST %</label>
+            <label className="text-sm" style={{ color: "var(--text-muted)" }}>
+              GST %
+            </label>
             <input
               type="number"
               value={cfg.billing.gstPercent}
-              onChange={(e) =>
-                setCfg((c) => deepMerge(c, { billing: { gstPercent: Number(e.target.value || 0) } }))
-              }
+              onChange={(e) => setCfg((c) => deepMerge(c, { billing: { gstPercent: Number(e.target.value || 0) } }))}
             />
           </div>
         </div>
@@ -259,6 +252,7 @@ export default function FeatureConfigurator() {
               <span className="knob" />
             </span>
           </label>
+
           <label className="flex items-center justify-between gap-4">
             <span>Inventory & Pharmacy (basic)</span>
             <span className="switch">
@@ -278,21 +272,45 @@ export default function FeatureConfigurator() {
                 placeholder="Low stock threshold"
                 value={cfg.inventory.lowStockThreshold}
                 onChange={(e) =>
-                  setCfg((c) =>
-                    deepMerge(c, { inventory: { lowStockThreshold: Number(e.target.value || 0) } })
-                  )
+                  setCfg((c) => deepMerge(c, { inventory: { lowStockThreshold: Number(e.target.value || 0) } }))
                 }
               />
               <input
                 type="number"
                 placeholder="Near expiry days"
                 value={cfg.inventory.nearExpiryDays}
-                onChange={(e) =>
-                  setCfg((c) => deepMerge(c, { inventory: { nearExpiryDays: Number(e.target.value || 0) } }))
-                }
+                onChange={(e) => setCfg((c) => deepMerge(c, { inventory: { nearExpiryDays: Number(e.target.value || 0) } }))}
               />
             </div>
           )}
+        </div>
+
+        <div className="card space-y-3">
+          <h3 className="font-semibold">Appointments</h3>
+          <label className="flex items-center justify-between gap-4">
+            <span>Enable Appointments module</span>
+            <span className="switch">
+              <input
+                type="checkbox"
+                checked={cfg.appointments.enabled}
+                onChange={(e) =>
+                  setCfg((c) => deepMerge(c, { appointments: { enabled: e.target.checked, singleDoctor: true } }))
+                }
+              />
+              <span className="knob" />
+            </span>
+          </label>
+          <label className="flex items-center justify-between gap-4">
+            <span>Single Doctor Scheduling</span>
+            <span className="switch">
+              <input
+                type="checkbox"
+                checked={cfg.appointments.singleDoctor}
+                onChange={(e) => setCfg((c) => deepMerge(c, { appointments: { singleDoctor: e.target.checked } }))}
+              />
+              <span className="knob" />
+            </span>
+          </label>
         </div>
 
         <div className="card space-y-3">
@@ -320,35 +338,9 @@ export default function FeatureConfigurator() {
             </span>
           </label>
         </div>
-
-        <div className="card space-y-3">
-          <h3 className="font-semibold">Pricing Mode</h3>
-          <label className="flex items-center justify-between gap-4">
-            <span>Tiered (auto)</span>
-            <span className="switch">
-              <input
-                type="checkbox"
-                checked={cfg.pricingMode === "tiered"}
-                onChange={(e) => setCfg((c) => ({ ...c, pricingMode: e.target.checked ? "tiered" : "custom" }))}
-              />
-              <span className="knob" />
-            </span>
-          </label>
-          <label className="flex items-center justify-between gap-4">
-            <span>A-la-carte</span>
-            <span className="switch">
-              <input
-                type="checkbox"
-                checked={cfg.pricingMode === "custom"}
-                onChange={(e) => setCfg((c) => ({ ...c, pricingMode: e.target.checked ? "custom" : "tiered" }))}
-              />
-              <span className="knob" />
-            </span>
-          </label>
-        </div>
       </div>
 
-      {/* Price Summary */}
+      {/* Pricing */}
       <div className="card" style={{ marginTop: 16 }}>
         <h3 className="font-semibold mb-2">Price Summary</h3>
         <div className="grid md:grid-cols-5 gap-3">
@@ -356,11 +348,13 @@ export default function FeatureConfigurator() {
           <div>Add-ons: ₹<PriceCell value={addons} /></div>
           <div>Discount: ₹<PriceCell value={discount} /></div>
           <div>GST: ₹<PriceCell value={gst} /></div>
-          <div><b>Total: ₹<PriceCell value={total} /></b></div>
+          <div>
+            <b>Total: ₹<PriceCell value={total} /></b>
+          </div>
         </div>
       </div>
 
-      {/* JSON Preview (client-only text; safe) */}
+      {/* JSON */}
       <div className="card" style={{ marginTop: 16 }}>
         <h3 className="font-semibold mb-2">Config JSON</h3>
         <pre className="text-xs overflow-auto" suppressHydrationWarning>
