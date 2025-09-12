@@ -1,0 +1,28 @@
+:root{
+  --bg:#0b0b10; --card:#14141d; --bar:#0d0d13; --mut:#a1a1aa; --line:#1f1f29; --primary:#0ea5e9;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font-family:system-ui,Segoe UI,Roboto;background:var(--bg);color:#fff}
+.layout{display:grid;grid-template-columns:240px 1fr;height:100vh}
+.side{background:var(--bar);border-right:1px solid var(--line);padding:16px;overflow:auto}
+.main{display:grid;grid-template-rows:auto 1fr}
+.top{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--bar)}
+.brand{display:flex;gap:10px;align-items:center}
+.logo{width:28px;height:28px;border-radius:6px;object-fit:cover}
+.clinic{font-weight:700}
+.meta{color:var(--mut);font-size:12px}
+.btn{background:#1a1a24;border:1px solid #2a2a36;padding:8px 10px;border-radius:10px;color:#fff;cursor:pointer}
+.btn.ghost{background:transparent}
+.content{position:relative}
+.frame{width:100%;height:100%;border:0;background:var(--bg)}
+.nav{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.nav a{display:block;padding:10px 12px;border-radius:10px;color:#fff;text-decoration:none;border:1px solid transparent}
+.nav a:hover{background:#15151f;border-color:#2a2a36}
+.nav a.active{background:var(--primary);color:#051018;border-color:transparent;font-weight:700}
+@media (max-width:900px){
+  .layout{grid-template-columns:1fr}
+  .side{position:fixed;z-index:9;inset:0 0 auto 0;height:auto;display:flex;overflow:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .nav{flex-direction:row;flex-wrap:wrap}
+  .main{grid-template-rows:auto 1fr}
+}
