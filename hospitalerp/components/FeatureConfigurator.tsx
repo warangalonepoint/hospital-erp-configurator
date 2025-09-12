@@ -2,6 +2,32 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
+/** ---------- Tiny Switch (iOS style) ---------- */
+function Switch({
+  checked,
+  onChange,
+  disabled,
+  id,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  id?: string;
+}) {
+  return (
+    <span className={`switch ${disabled ? "disabled" : ""}`}>
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="knob" />
+    </span>
+  );
+}
+
 /** ---------- Types ---------- */
 type Branding = {
   clinicName: string;
@@ -50,12 +76,11 @@ function deepMerge<T>(base: T, patch: Partial<T>): T {
   }
   return out as T;
 }
-
 function b64(json: any) {
   return encodeURIComponent(btoa(typeof json === "string" ? json : JSON.stringify(json)));
 }
 
-/** ---------- Stable values to avoid hydration mismatches ---------- */
+/** ---------- Stable hooks ---------- */
 function useStableNowISO() {
   const ref = useRef<string>();
   if (!ref.current) ref.current = new Date().toISOString();
@@ -75,7 +100,6 @@ function useStableQuoteNumber(prefix = "Q") {
 
 /** ---------- Component ---------- */
 export default function FeatureConfigurator() {
-  // load initial from localStorage once
   const [cfg, setCfg] = useState<Config>(() => {
     try {
       const raw = localStorage.getItem("erpConfig");
@@ -85,9 +109,9 @@ export default function FeatureConfigurator() {
     }
   });
 
-  // stable defaults
   const nowISO = useStableNowISO();
   const quoteNumber = useStableQuoteNumber();
+
   useEffect(() => {
     setCfg((c) =>
       deepMerge(c, {
@@ -101,7 +125,6 @@ export default function FeatureConfigurator() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // derived numbers (toy pricing just to show structure)
   const basePrice = useMemo(() => 59999, []);
   const addons = useMemo(() => {
     let n = 0;
@@ -115,12 +138,10 @@ export default function FeatureConfigurator() {
   const gst = Math.round((net * (cfg.billing.gstPercent || 18)) / 100);
   const total = net + gst;
 
-  // persist config
   useEffect(() => {
     localStorage.setItem("erpConfig", JSON.stringify(cfg));
   }, [cfg]);
 
-  // stable JSON string for hydration-safe preview
   const previewJson = useMemo(
     () =>
       JSON.stringify(
@@ -140,7 +161,6 @@ export default function FeatureConfigurator() {
     [cfg]
   );
 
-  // Actions
   const copyShareLink = async () => {
     const url = `${location.origin}/nav.html?cfg=${b64(cfg)}&page=patients.html`;
     await navigator.clipboard.writeText(url);
@@ -158,7 +178,7 @@ export default function FeatureConfigurator() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 form-dark">
       <h1 className="text-xl font-semibold">Hospital ERP — Configurator</h1>
 
       {/* Branding */}
@@ -166,26 +186,26 @@ export default function FeatureConfigurator() {
         <div className="space-y-3 p-4 border rounded-xl">
           <h2 className="font-semibold">Branding & Contact</h2>
           <input
-            className="w-full p-2 rounded bg-neutral-900 border border-neutral-800"
+            className="w-full p-2"
             placeholder="Clinic / Hospital Name"
             value={cfg.branding.clinicName}
             onChange={(e) => setCfg((c) => deepMerge(c, { branding: { clinicName: e.target.value } }))}
           />
           <input
-            className="w-full p-2 rounded bg-neutral-900 border border-neutral-800"
+            className="w-full p-2"
             placeholder="Address"
             value={cfg.branding.address ?? ""}
             onChange={(e) => setCfg((c) => deepMerge(c, { branding: { address: e.target.value } }))}
           />
           <div className="grid grid-cols-2 gap-3">
             <input
-              className="p-2 rounded bg-neutral-900 border border-neutral-800"
+              className="p-2"
               placeholder="Phone"
               value={cfg.branding.phone ?? ""}
               onChange={(e) => setCfg((c) => deepMerge(c, { branding: { phone: e.target.value } }))}
             />
             <input
-              className="p-2 rounded bg-neutral-900 border border-neutral-800"
+              className="p-2"
               placeholder="Email"
               value={cfg.branding.email ?? ""}
               onChange={(e) => setCfg((c) => deepMerge(c, { branding: { email: e.target.value } }))}
@@ -195,7 +215,7 @@ export default function FeatureConfigurator() {
             <label className="text-sm text-neutral-400">Primary Color</label>
             <input
               type="color"
-              className="h-10 w-20 rounded bg-neutral-900 border border-neutral-800"
+              className="h-10 w-20"
               value={cfg.branding.primaryColor ?? "#0ea5e9"}
               onChange={(e) => setCfg((c) => deepMerge(c, { branding: { primaryColor: e.target.value } }))}
             />
@@ -207,14 +227,14 @@ export default function FeatureConfigurator() {
           <h2 className="font-semibold">Quote Details</h2>
           <div className="grid grid-cols-2 gap-3">
             <input
-              className="p-2 rounded bg-neutral-900 border border-neutral-800"
+              className="p-2"
               placeholder="Quote Number"
               value={cfg.quote?.number || ""}
               onChange={(e) => setCfg((c) => deepMerge(c, { quote: { number: e.target.value } }))}
             />
             <input
               type="date"
-              className="p-2 rounded bg-neutral-900 border border-neutral-800"
+              className="p-2"
               value={cfg.quote?.date || nowISO.slice(0, 10)}
               onChange={(e) => setCfg((c) => deepMerge(c, { quote: { date: e.target.value } }))}
             />
@@ -223,7 +243,7 @@ export default function FeatureConfigurator() {
             <label className="text-sm text-neutral-400">Discount %</label>
             <input
               type="number"
-              className="p-2 rounded bg-neutral-900 border border-neutral-800"
+              className="p-2"
               value={cfg.quote?.discountPct ?? 0}
               onChange={(e) => setCfg((c) => deepMerge(c, { quote: { discountPct: Number(e.target.value || 0) } }))}
             />
@@ -232,7 +252,7 @@ export default function FeatureConfigurator() {
             <label className="text-sm text-neutral-400">GST %</label>
             <input
               type="number"
-              className="p-2 rounded bg-neutral-900 border border-neutral-800"
+              className="p-2"
               value={cfg.billing.gstPercent}
               onChange={(e) => setCfg((c) => deepMerge(c, { billing: { gstPercent: Number(e.target.value || 0) } }))}
             />
@@ -240,31 +260,30 @@ export default function FeatureConfigurator() {
         </div>
       </section>
 
-      {/* Feature Toggles */}
+      {/* Toggles (Switches) */}
       <section className="grid md:grid-cols-3 gap-4">
-        <div className="p-4 border rounded-xl space-y-2">
+        <div className="p-4 border rounded-xl space-y-3">
           <h3 className="font-semibold">Core</h3>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
+          <label className="flex items-center justify-between gap-4">
+            <span>Patients (UID + QR)</span>
+            <Switch
               checked={cfg.patients.enabled}
-              onChange={(e) => setCfg((c) => deepMerge(c, { patients: { enabled: e.target.checked } }))}
+              onChange={(v) => setCfg((c) => deepMerge(c, { patients: { enabled: v } }))}
             />
-            Patients (UID + QR)
           </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
+          <label className="flex items-center justify-between gap-4">
+            <span>Inventory & Pharmacy (basic)</span>
+            <Switch
               checked={cfg.inventory.enabled}
-              onChange={(e) => setCfg((c) => deepMerge(c, { inventory: { enabled: e.target.checked } }))}
+              onChange={(v) => setCfg((c) => deepMerge(c, { inventory: { enabled: v } }))}
             />
-            Inventory & Pharmacy (basic)
           </label>
+
           {cfg.inventory.enabled && (
-            <div className="grid grid-cols-2 gap-2 pl-6">
+            <div className="grid grid-cols-2 gap-2 pl-1">
               <input
                 type="number"
-                className="p-2 rounded bg-neutral-900 border border-neutral-800"
+                className="p-2"
                 placeholder="Low stock threshold"
                 value={cfg.inventory.lowStockThreshold}
                 onChange={(e) =>
@@ -273,7 +292,7 @@ export default function FeatureConfigurator() {
               />
               <input
                 type="number"
-                className="p-2 rounded bg-neutral-900 border border-neutral-800"
+                className="p-2"
                 placeholder="Near expiry days"
                 value={cfg.inventory.nearExpiryDays}
                 onChange={(e) =>
@@ -284,48 +303,40 @@ export default function FeatureConfigurator() {
           )}
         </div>
 
-        <div className="p-4 border rounded-xl space-y-2">
+        <div className="p-4 border rounded-xl space-y-3">
           <h3 className="font-semibold">Operations</h3>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
+          <label className="flex items-center justify-between gap-4">
+            <span>Billing + GST invoices</span>
+            <Switch
               checked={cfg.billing.enabled}
-              onChange={(e) => setCfg((c) => deepMerge(c, { billing: { enabled: e.target.checked } }))}
+              onChange={(v) => setCfg((c) => deepMerge(c, { billing: { enabled: v } }))}
             />
-            Billing + GST invoices
           </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
+          <label className="flex items-center justify-between gap-4">
+            <span>Staff Attendance (simple)</span>
+            <Switch
               checked={cfg.staff.attendanceSimple}
-              onChange={(e) => setCfg((c) => deepMerge(c, { staff: { attendanceSimple: e.target.checked } }))}
+              onChange={(v) => setCfg((c) => deepMerge(c, { staff: { attendanceSimple: v } }))}
             />
-            Staff Attendance (simple)
           </label>
         </div>
 
-        <div className="p-4 border rounded-xl space-y-2">
+        <div className="p-4 border rounded-xl space-y-3">
           <h3 className="font-semibold">Pricing Mode</h3>
-          <div className="flex gap-3">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="pricing"
-                checked={cfg.pricingMode === "tiered"}
-                onChange={() => setCfg((c) => ({ ...c, pricingMode: "tiered" }))}
-              />
-              Tiered (auto)
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="pricing"
-                checked={cfg.pricingMode === "custom"}
-                onChange={() => setCfg((c) => ({ ...c, pricingMode: "custom" }))}
-              />
-              A-la-carte
-            </label>
-          </div>
+          <label className="flex items-center justify-between gap-4">
+            <span>Tiered (auto)</span>
+            <Switch
+              checked={cfg.pricingMode === "tiered"}
+              onChange={(v) => setCfg((c) => ({ ...c, pricingMode: v ? "tiered" : "custom" }))}
+            />
+          </label>
+          <label className="flex items-center justify-between gap-4">
+            <span>A-la-carte</span>
+            <Switch
+              checked={cfg.pricingMode === "custom"}
+              onChange={(v) => setCfg((c) => ({ ...c, pricingMode: v ? "custom" : "tiered" }))}
+            />
+          </label>
         </div>
       </section>
 
@@ -346,16 +357,19 @@ export default function FeatureConfigurator() {
         <div className="space-y-3 p-4 border rounded-xl">
           <h3 className="font-semibold">Actions</h3>
           <div className="flex gap-3">
-            <button className="px-3 py-2 rounded bg-neutral-800 border border-neutral-700" onClick={copyShareLink}>
+            <button
+              className="px-3 py-2 rounded bg-neutral-800 border border-neutral-700 text-neutral-50"
+              onClick={copyShareLink}
+            >
               Copy Shell Link
             </button>
-            <button className="px-3 py-2 rounded bg-neutral-800 border border-neutral-700" onClick={downloadJson}>
+            <button
+              className="px-3 py-2 rounded bg-neutral-800 border border-neutral-700 text-neutral-50"
+              onClick={downloadJson}
+            >
               Download JSON
             </button>
           </div>
-          <p className="text-xs text-neutral-400">
-            The shell reads config from the <code>?cfg=</code> query or <code>localStorage.erpConfig</code>.
-          </p>
         </div>
 
         <div className="space-y-2 p-4 border rounded-xl">
