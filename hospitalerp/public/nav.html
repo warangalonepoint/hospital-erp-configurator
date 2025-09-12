@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Hospital ERP — Shell</title>
+<link rel="icon" href="./assets/logo.png">
+<link rel="stylesheet" href="./styles/shell.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="side" id="side"></aside>
+
+  <main class="main">
+    <header class="top">
+      <div class="brand">
+        <img src="./assets/logo.png" alt="" class="logo">
+        <div>
+          <div class="clinic" id="clinicName">Clinic</div>
+          <div class="meta" id="clinicMeta">ERP Shell</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" id="copyLinkBtn">🔗 Share</button>
+        <button class="btn" id="clearCfgBtn">🧹 Clear Cache</button>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- Loads actual feature page -->
+      <iframe id="frame" title="Module" class="frame"></iframe>
+    </div>
+  </main>
+</div>
+
+<script src="./js/nav.js"></script>
+</body>
+</html>
