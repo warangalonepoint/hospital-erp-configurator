@@ -1,12 +1,22 @@
 {
   "name": "Dr. Charan Child Clinic",
-  "short_name": "Charan Clinic",
-  "start_url": "/index.html",
+  "short_name": "ChildClinic",
+  "description": "PWA app for Dr. Charan Child Clinic with bookings, patients, pharmacy, lab, and staff management.",
+  "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#0b1220",
+  "background_color": "#ffffff",
   "theme_color": "#17B26A",
+  "orientation": "portrait-primary",
   "icons": [
-    { "src": "/public/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/public/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "./public/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./public/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
   ]
 }
