@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="manifest" href="/public/manifest.webmanifest" />
+  <link rel="icon" href="/public/favicon-48.png" />
+  <link rel="stylesheet" href="/styles/styles.css" />
+  <title>Dr. Charan Child Clinic</title>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo">
+      <img src="/public/icons/icon-192.png" alt="Dr. Charan Child Clinic" />
+      <strong>Dr. Charan Child Clinic</strong>
+    </div>
+    <div class="hbtns">
+      <button class="btn" onclick="toggleTheme()">☀/🌙</button>
+      <button class="btn" onclick="clearAll()">Clear Cache</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card lilac">
+      <h2>Login — Dr. Charan Child Clinic</h2>
+      <div class="row">
+        <select id="role" class="input">
+          <option value="doctor">Doctor (1111)</option>
+          <option value="supervisor">Supervisor (2222)</option>
+          <option value="front">Front Office (3333)</option>
+          <option value="master">Master (9999)</option>
+        </select>
+        <input id="pin" class="input" type="password" inputmode="numeric" placeholder="Enter PIN" />
+      </div>
+      <div style="margin-top:12px; display:flex; gap:10px;">
+        <button class="btn" onclick="doLogin()">Login</button>
+        <span class="helper">Theme, icons & layout match the saved sample.</span>
+      </div>
+    </div>
+
+    <div class="card blue">
+      <h2>Login — Dr. Mrs. Charan</h2>
+      <p class="helper">PIN 0000</p>
+      <div class="row">
+        <input id="pinMrs" class="input" type="password" inputmode="numeric" placeholder="Enter PIN 0000" />
+      </div>
+      <div style="margin-top:12px;">
+        <button class="btn" onclick="doLoginMrs()">Login</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">PWA • Offline-first • Local-only DB • Encrypted peer sync (coming next)</div>
+</div>
+
+<script type="module">
+import { ensureSeed } from "/scripts/db.js";
+import { login, getTheme, setTheme } from "/scripts/auth.js";
+import { clearAll } from "/scripts/utils.js";
+
+window.clearAll = clearAll;
+
+(async ()=>{
+  document.documentElement.dataset.theme = await getTheme();
+  await ensureSeed();
+})();
+
+window.toggleTheme = async ()=>{
+  const cur = document.documentElement.dataset.theme || "dark";
+  await setTheme(cur==="dark" ? "light" : "dark");
+};
+
+window.doLogin = async ()=>{
+  const role = document.querySelector("#role").value;
+  const pin = document.querySelector("#pin").value.trim();
+  try{ await login(role, pin); }catch(e){ alert(e.message); }
+};
+window.doLoginMrs = async ()=>{
+  const pin = document.querySelector("#pinMrs").value.trim();
+  try{ await login("mrs", pin); }catch(e){ alert(e.message); }
+};
+
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("/service-worker.js"); }
+</script>
+</body>
+</html>

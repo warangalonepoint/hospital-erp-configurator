@@ -1,0 +1,80 @@
+<!doctype html><html lang="en" data-theme="dark"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/styles/styles.css"><title>Patients</title></head>
+<body><div class="container">
+  <div class="header">
+    <div class="logo"><img src="/public/icons/icon-192.png"><strong>Patients</strong></div>
+    <div class="hbtns"><a class="btn" href="/dashboard.html">← Dashboard</a></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <input id="name" class="input" placeholder="Patient name" />
+      <input id="phone" class="input" placeholder="Phone" inputmode="tel" />
+    </div>
+    <div class="row">
+      <input id="referredBy" class="input" placeholder="Referred by (Doctor/Hospital)" />
+      <select id="commType" class="input">
+        <option value="">Commission Type</option>
+        <option value="percent">% Percentage</option>
+        <option value="amount">₹ Amount</option>
+      </select>
+    </div>
+    <div class="row">
+      <input id="commVal" class="input" placeholder="Commission value (e.g., 10 or 200)" />
+      <button class="btn" onclick="savePatient()">Save</button>
+    </div>
+    <div class="helper">Each patient gets a unique ID + barcode, used across bookings, pharmacy, and lab.</div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Scan / Search</h2>
+    <div class="row">
+      <input id="q" class="input" placeholder="Search by name / phone / UID" oninput="search()" />
+    </div>
+    <div id="list" class="grid" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<script type="module">
+import { db } from "/scripts/db.js";
+import { guard } from "/scripts/auth.js";
+guard(["doctor","master"]);
+
+function uidFrom(name, phone){
+  return (name.trim()+"-"+(phone||"").slice(-4)).toLowerCase().replace(/\s+/g,"");
+}
+
+window.savePatient = async ()=>{
+  const name = document.querySelector("#name").value.trim();
+  const phone= document.querySelector("#phone").value.trim();
+  const referredBy = document.querySelector("#referredBy").value.trim();
+  const commissionType = document.querySelector("#commType").value;
+  const commissionValue = document.querySelector("#commVal").value.trim();
+  if(!name) return alert("Name required");
+  const uid = uidFrom(name, phone);
+  await db.patients.put({ uid, name, phone, referredBy });
+  if(commissionType)
+    await db.referrals.put({ patientUid: uid, by: referredBy, commissionType, commissionValue });
+  alert("Saved"); search();
+};
+
+window.search = async ()=>{
+  const q = document.querySelector("#q").value.toLowerCase();
+  const all = await db.patients.toArray();
+  const items = all.filter(p => !q || p.name.toLowerCase().includes(q) || p.phone?.includes(q) || p.uid.includes(q));
+  const list = document.querySelector("#list"); list.innerHTML = "";
+  items.forEach(p=>{
+    const el = document.createElement("div");
+    el.className = "card";
+    el.innerHTML = `<strong>${p.name}</strong><div class="helper">${p.phone||""} • ${p.uid}</div>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+        <a class="btn" href="https://wa.me/?text=${encodeURIComponent('Next visit reminder for '+p.name)}">WhatsApp Reminder</a>
+        <a class="btn" href="/booking-status.html?uid=${p.uid}">History</a>
+      </div>`;
+    list.appendChild(el);
+  });
+};
+search();
+</script>
+</body></html>

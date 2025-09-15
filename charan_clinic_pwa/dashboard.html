@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/styles/styles.css" />
+  <title>Dashboard • Doctor</title>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo"><img src="/public/icons/icon-192.png"><strong>DR. CHARAN</strong></div>
+    <div class="hbtns">
+      <a class="btn" href="/index.html">← Home</a>
+      <button class="btn" onclick="logout()">Logout</button>
+      <button class="btn" onclick="clearAll()">Clear Cache</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <a class="tile card purple" href="/analytics.html"><h2>Analytics</h2><div class="helper">KPIs & weekly sales</div></a>
+    <a class="tile card blue" href="/pharmacy.html"><h2>Pharmacy</h2><div class="helper">Today ₹0.00 • MTD ₹0.00 • Top: —</div></a>
+    <a class="tile card green" href="/booking-status.html"><h2>Booking Status</h2><div class="helper">Today / Week / Month counts</div></a>
+    <a class="tile card pink" href="/patients.html"><h2>Patients</h2><div class="helper">Reminders & history • 0 due today</div></a>
+    <a class="tile card orange" href="/staff.html"><h2>Staff</h2><div class="helper">Roster & attendance (view-only)</div></a>
+    <a class="tile card lilac" href="/settings.html"><h2>Settings</h2><div class="helper">PINs, Staff, Patients</div></a>
+  </div>
+</div>
+
+<script type="module">
+import { guard } from "/scripts/auth.js";
+import { clearAll } from "/scripts/utils.js";
+window.clearAll = clearAll;
+guard(["doctor","master","mrs"]);
+</script>
+</body>
+</html>

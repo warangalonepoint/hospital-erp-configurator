@@ -1,0 +1,14 @@
+<!doctype html><html lang="en" data-theme="dark"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/styles/styles.css"><title>Front Office</title></head>
+<body><div class="container">
+  <div class="header">
+    <div class="logo"><img src="/public/icons/icon-192.png"><strong>Front Office</strong></div>
+    <div class="hbtns"><a class="btn" href="/index.html">← Home</a><button class="btn" onclick="logout()">Logout</button></div>
+  </div>
+  <div class="grid">
+    <a class="tile card green" href="/bookings.html"><h2>Bookings</h2><div class="helper">Manual • Online • WhatsApp • Appointments</div></a>
+  </div>
+</div>
+<script type="module">import{guard}from"/scripts/auth.js";guard(["front","master"]);</script>
+</body></html>

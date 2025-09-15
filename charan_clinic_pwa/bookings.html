@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/styles/styles.css">
+  <title>Bookings</title>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo"><img src="/public/icons/icon-192.png"><strong>Bookings</strong></div>
+    <div class="hbtns">
+      <a class="btn" href="/dashboard.html">← Dashboard</a>
+      <button class="btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <!-- Manual Booking -->
+  <div class="card green">
+    <h2>Manual Booking</h2>
+    <div class="row">
+      <input id="pName" class="input" placeholder="Patient Name" />
+      <input id="pPhone" class="input" placeholder="Phone Number" inputmode="tel" />
+    </div>
+    <div class="row">
+      <input id="slotDate" class="input" type="date" />
+      <input id="slotTime" class="input" type="time" />
+    </div>
+    <div class="row">
+      <input id="referredBy" class="input" placeholder="Referred by (Doctor/Hospital)" />
+      <select id="commType" class="input">
+        <option value="">Commission Type</option>
+        <option value="percent">% Percentage</option>
+        <option value="amount">₹ Amount</option>
+      </select>
+    </div>
+    <div class="row">
+      <input id="commVal" class="input" placeholder="Commission Value (10% or ₹200)" />
+      <button class="btn" onclick="saveBooking()">Save Booking</button>
+    </div>
+  </div>
+
+  <!-- Online / WhatsApp placeholders -->
+  <div class="grid" style="margin-top:16px">
+    <div class="card blue">
+      <h2>Online Bookings</h2>
+      <div class="helper">Future: integrate online form / sync</div>
+    </div>
+    <div class="card purple">
+      <h2>WhatsApp Bookings</h2>
+      <div class="helper">Future: integrate BookingBot sync</div>
+    </div>
+  </div>
+
+  <!-- List -->
+  <div class="card" style="margin-top:16px">
+    <h2>Recent Bookings</h2>
+    <div id="list" class="grid"></div>
+  </div>
+</div>
+
+<script type="module">
+import { db } from "/scripts/db.js";
+import { guard } from "/scripts/auth.js";
+import { walink } from "/scripts/utils.js";
+
+guard(["doctor","supervisor","front","master"]);
+
+function genUID(name, phone){
+  return (name.trim()+"-"+(phone||"").slice(-4)).toLowerCase().replace(/\s+/g,"");
+}
+
+window.saveBooking = async ()=>{
+  const name = document.querySelector("#pName").value.trim();
+  const phone = document.querySelector("#pPhone").value.trim();
+  const date = document.querySelector("#slotDate").value;
+  const time = document.querySelector("#slotTime").value;
+  const referredBy = document.querySelector("#referredBy").value.trim();
+  const commType = document.querySelector("#commType").value;
+  const commVal  = document.querySelector("#commVal").value.trim();
+
+  if(!name || !phone || !date || !time) return alert("Fill all fields");
+
+  const uid = genUID(name, phone);
+  await db.patients.put({ uid, name, phone, referredBy });
+  if(commType) await db.referrals.put({ patientUid: uid, by: referredBy, commissionType: commType, commissionValue: commVal });
+
+  await db.bookings.put({ date, slot: time, patientUid: uid, type:"manual" });
+  alert("Booking saved");
+  load();
+};
+
+async function load(){
+  const all = await db.bookings.orderBy("id").reverse().limit(10).toArray();
+  const list = document.querySelector("#list"); list.innerHTML="";
+  for(const b of all){
+    const p = await db.patients.get({uid:b.patientUid});
+    const el = document.createElement("div");
+    el.className="card";
+    el.innerHTML = `<strong>${p?.name||"?"}</strong> (${b.date} ${b.slot})
+      <div class="helper">${p?.phone||""} • UID: ${b.patientUid}</div>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+        <a class="btn" href="/patients.html?q=${b.patientUid}">History</a>
+        <a class="btn" href="${walink('Reminder: visit '+(p?.name||''))}">WhatsApp Reminder</a>
+      </div>`;
+    list.appendChild(el);
+  }
+}
+load();
+</script>
+</body>
+</html>

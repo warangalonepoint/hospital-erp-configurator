@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/styles/styles.css" />
+  <title>Booking Status</title>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo"><img src="/public/icons/icon-192.png" alt=""><strong>Booking Status</strong></div>
+    <div class="hbtns">
+      <a class="btn" href="/dashboard.html">← Dashboard</a>
+      <a class="btn" href="/bookings.html">New Booking</a>
+    </div>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="grid" style="margin-bottom:16px">
+    <div class="card green"><h2>Today</h2><div id="todayCount" class="helper">0</div></div>
+    <div class="card blue"><h2>This Week</h2><div id="weekCount" class="helper">0</div></div>
+    <div class="card purple"><h2>This Month</h2><div id="monthCount" class="helper">0</div></div>
+  </div>
+
+  <!-- Type breakdown -->
+  <div class="grid" style="margin-bottom:16px">
+    <div class="card lilac"><h2>Manual</h2><div id="typeManual" class="helper">0</div></div>
+    <div class="card orange"><h2>Online</h2><div id="typeOnline" class="helper">0</div></div>
+    <div class="card pink"><h2>WhatsApp</h2><div id="typeWa" class="helper">0</div></div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card">
+    <h2>Filter</h2>
+    <div class="row">
+      <input id="fDate" class="input" type="date" />
+      <select id="fRange" class="input">
+        <option value="day">Day</option>
+        <option value="week">Week</option>
+        <option value="month">Month</option>
+        <option value="all">All</option>
+      </select>
+    </div>
+    <div style="margin-top:10px">
+      <button class="btn" onclick="apply()">Apply</button>
+      <span class="helper">Default: Today</span>
+    </div>
+  </div>
+
+  <!-- List -->
+  <div class="card" style="margin-top:16px">
+    <h2>Bookings</h2>
+    <div id="list" class="grid"></div>
+  </div>
+</div>
+
+<script type="module">
+import { db } from "/scripts/db.js";
+import { guard } from "/scripts/auth.js";
+import { walink } from "/scripts/utils.js";
+
+guard(["doctor","master","supervisor","front"]); // viewing allowed for all clinic roles
+
+// ---- Date helpers
+function parseISO(d){ const [y,m,day]=d.split("-").map(Number); return new Date(y, m-1, day); }
+function fmt(d){ return new Date(d).toISOString().slice(0,10); }
+function startOfWeek(d){ const nd=new Date(d); const day=(nd.getDay()+6)%7; nd.setDate(nd.getDate()-day); nd.setHours(0,0,0,0); return nd; }
+function endOfWeek(d){ const s=startOfWeek(d); const e=new Date(s); e.setDate(e.getDate()+6); e.setHours(23,59,59,999); return e; }
+function startOfMonth(d){ const nd=new Date(d.getFullYear(), d.getMonth(), 1); nd.setHours(0,0,0,0); return nd; }
+function endOfMonth(d){ const nd=new Date(d.getFullYear(), d.getMonth()+1, 0); nd.setHours(23,59,59,999); return nd; }
+function inRange(dateStr, from, to){ const dt=new Date(dateStr); return dt>=from && dt<=to; }
+
+// ---- UI
+const els = {
+  todayCount: document.querySelector("#todayCount"),
+  weekCount: document.querySelector("#weekCount"),
+  monthCount: document.querySelector("#monthCount"),
+  tManual: document.querySelector("#typeManual"),
+  tOnline: document.querySelector("#typeOnline"),
+  tWa: document.querySelector("#typeWa"),
+  list: document.querySelector("#list"),
+  fDate: document.querySelector("#fDate"),
+  fRange: document.querySelector("#fRange"),
+};
+
+els.fDate.value = fmt(new Date());
+
+async function counters(){
+  const all = await db.bookings.toArray();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayEnd = new Date(today); todayEnd.setHours(23,59,59,999);
+  const wkS = startOfWeek(new Date());
+  const wkE = endOfWeek(new Date());
+  const mS = startOfMonth(new Date());
+  const mE = endOfMonth(new Date());
+
+  let cT=0, cW=0, cM=0, m=0, o=0, w=0;
+  for(const b of all){
+    const d = new Date(b.date);
+    if(d>=today && d<=todayEnd) cT++;
+    if(d>=wkS && d<=wkE) cW++;
+    if(d>=mS && d<=mE) cM++;
+    if(b.type==="manual") m++;
+    else if(b.type==="online") o++;
+    else if(b.type==="whatsapp") w++;
+  }
+  els.todayCount.textContent = cT;
+  els.weekCount.textContent  = cW;
+  els.monthCount.textContent = cM;
+  els.tManual.textContent = m;
+  els.tOnline.textContent = o;
+  els.tWa.textContent     = w;
+}
+
+async function apply(){
+  const range = els.fRange.value;
+  const base = parseISO(els.fDate.value || fmt(new Date()));
+  let from, to;
+  if(range==="day"){
+    from = new Date(base); from.setHours(0,0,0,0);
+    to   = new Date(base); to.setHours(23,59,59,999);
+  }else if(range==="week"){
+    from = startOfWeek(base); to = endOfWeek(base);
+  }else if(range==="month"){
+    from = startOfMonth(base); to = endOfMonth(base);
+  }else{
+    from = new Date(2000,0,1); to = new Date(2100,0,1);
+  }
+
+  const all = await db.bookings.reverse().toArray();
+  const items = all.filter(b=>inRange(b.date, from, to));
+
+  els.list.innerHTML = "";
+  for(const b of items){
+    const p = await db.patients.get({uid:b.patientUid});
+    const referred = p?.referredBy ? ` • Referred by: ${p.referredBy}` : "";
+    const row = document.createElement("div");
+    row.className = "card";
+    row.innerHTML = `
+      <strong>${p?.name || "Unknown"}</strong>
+      <div class="helper">${b.date} ${b.slot} • ${b.type||"manual"} • UID: ${b.patientUid}${referred}</div>
+
+      <div class="row" style="margin-top:8px">
+        <input class="input nextDate" type="date" value="${fmt(new Date())}">
+        <input class="input nextTime" type="time">
+      </div>
+      <div class="row">
+        <input class="input nextNote" placeholder="Next visit notes / prescription summary">
+        <div style="display:flex; gap:8px; align-items:center">
+          <button class="btn saveNext">Save Next Visit</button>
+          <a class="btn waBtn" target="_blank">WhatsApp Reminder</a>
+          <a class="btn" href="/patients.html?q=${b.patientUid}">History</a>
+        </div>
+      </div>
+    `;
+
+    // Wire actions
+    const nextDate = row.querySelector(".nextDate");
+    const nextTime = row.querySelector(".nextTime");
+    const nextNote = row.querySelector(".nextNote");
+    const saveBtn  = row.querySelector(".saveNext");
+    const waBtn    = row.querySelector(".waBtn");
+
+    saveBtn.addEventListener("click", async ()=>{
+      const nd = nextDate.value;
+      const nt = nextTime.value || "09:00";
+      const note = nextNote.value.trim();
+      await db.appointments.put({
+        date: nd, patientUid: b.patientUid, time: nt, note, type: "next-visit", fromBookingId: b.id
+      });
+      alert("Next visit saved");
+    });
+
+    waBtn.addEventListener("click", ()=>{
+      const nd = nextDate.value;
+      const nt = nextTime.value || "";
+      const msg = `Hello ${p?.name||""}, your next visit is scheduled on ${nd}${nt?(" at "+nt):""}. — Dr. Charan Child Clinic`;
+      waBtn.href = walink(msg, p?.phone||"");
+    });
+
+    els.list.appendChild(row);
+  }
+}
+
+// initial load
+counters();
+apply();
+window.apply = apply;
+</script>
+</body>
+</html>
