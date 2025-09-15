@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/styles/styles.css" />
+  <title>Settings</title>
+  <style>
+    .table{width:100%; border-collapse:collapse}
+    .table th,.table td{padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.08)}
+    .flex{display:flex; gap:8px; flex-wrap:wrap}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo"><img src="/public/icons/icon-192.png" alt=""><strong>Settings</strong></div>
+    <div class="hbtns">
+      <a class="btn" href="/dashboard.html">← Dashboard</a>
+      <button class="btn" onclick="clearAll()">Clear Cache</button>
+    </div>
+  </div>
+
+  <!-- Theme -->
+  <div class="card green">
+    <h2>Theme</h2>
+    <div class="flex">
+      <button class="btn" onclick="setThemeUI('light')">Light</button>
+      <button class="btn" onclick="setThemeUI('dark')">Dark</button>
+    </div>
+    <div class="helper" id="themeHint">Current: —</div>
+  </div>
+
+  <!-- PINs -->
+  <div class="card" style="margin-top:16px">
+    <h2>Change PINs</h2>
+    <div class="row">
+      <select id="role" class="input">
+        <option value="doctor">Doctor (1111)</option>
+        <option value="supervisor">Supervisor (2222)</option>
+        <option value="front">Front Office (3333)</option>
+      </select>
+      <input id="newPin" class="input" inputmode="numeric" placeholder="New PIN (4–6 digits)" />
+    </div>
+    <div class="row">
+      <button class="btn" onclick="savePin()">Save PIN</button>
+      <span class="helper">Only Doctor/Master can change role PINs.</span>
+    </div>
+  </div>
+
+  <!-- Backup / Restore -->
+  <div class="card" style="margin-top:16px">
+    <h2>Backup & Restore (JSON)</h2>
+    <div class="row">
+      <button class="btn" onclick="backupJSON()">Download Backup (.json)</button>
+      <input id="restoreFile" class="input" type="file" accept="application/json" />
+    </div>
+    <div class="row">
+      <button class="btn" onclick="restoreJSON()">Restore from JSON</button>
+      <span class="helper">Restores all stores. This overwrites existing data for those stores.</span>
+    </div>
+  </div>
+
+  <!-- Exports -->
+  <div class="card" style="margin-top:16px">
+    <h2>Export CSV (by store)</h2>
+    <div class="grid">
+      <div class="card lilac"><h2>Patients</h2><button class="btn" onclick="exportCsv('patients')">Export</button></div>
+      <div class="card blue"><h2>Bookings</h2><button class="btn" onclick="exportCsv('bookings')">Export</button></div>
+      <div class="card green"><h2>Appointments</h2><button class="btn" onclick="exportCsv('appointments')">Export</button></div>
+      <div class="card orange"><h2>Pharmacy Items</h2><button class="btn" onclick="exportCsv('pharmacyItems')">Export</button></div>
+      <div class="card pink"><h2>Stock Batches</h2><button class="btn" onclick="exportCsv('stockBatches')">Export</button></div>
+      <div class="card purple"><h2>Invoices</h2><button class="btn" onclick="exportCsv('invoices')">Export</button></div>
+      <div class="card lilac"><h2>Invoice Items</h2><button class="btn" onclick="exportCsv('invoiceItems')">Export</button></div>
+      <div class="card blue"><h2>Lab Invoices</h2><button class="btn" onclick="exportCsv('labInvoices')">Export</button></div>
+      <div class="card green"><h2>Staff</h2><button class="btn" onclick="exportCsv('staff')">Export</button></div>
+      <div class="card orange"><h2>Attendance</h2><button class="btn" onclick="exportCsv('attendance')">Export</button></div>
+      <div class="card pink"><h2>Referrals</h2><button class="btn" onclick="exportCsv('referrals')">Export</button></div>
+      <div class="card purple"><h2>Settings</h2><button class="btn" onclick="exportCsv('settings')">Export</button></div>
+    </div>
+  </div>
+
+  <div class="footer">Local-first • IndexedDB • No cloud • Encrypted peer sync (separate file)</div>
+</div>
+
+<script type="module">
+import { db, hashPin, ensureSeed } from "/scripts/db.js";
+import { guard, getTheme, setTheme } from "/scripts/auth.js";
+import { clearAll } from "/scripts/utils.js";
+
+window.clearAll = clearAll;
+guard(["doctor","master"]); // Only Doctor/Master can access Settings
+
+const STORES = [
+  "pins","settings","patients","bookings","appointments",
+  "pharmacyItems","stockBatches","invoices","invoiceItems",
+  "labInvoices","staff","attendance","referrals","logs"
+];
+
+// Theme
+(async ()=>{
+  await ensureSeed();
+  const cur = await getTheme();
+  document.documentElement.dataset.theme = cur;
+  document.querySelector("#themeHint").textContent = "Current: " + cur;
+})();
+window.setThemeUI = async (t)=>{
+  await setTheme(t);
+  document.querySelector("#themeHint").textContent = "Current: " + t;
+};
+
+// Change PIN
+window.savePin = async ()=>{
+  const role = document.querySelector("#role").value;
+  const pin  = (document.querySelector("#newPin").value||"").trim();
+  if(!/^\d{4,6}$/.test(pin)) return alert("PIN must be 4–6 digits");
+  const hashed = await hashPin(pin);
+  await db.pins.put({ role, hashedPin: hashed });
+  alert("PIN updated");
+  document.querySelector("#newPin").value="";
+};
+
+// Backup (JSON)
+window.backupJSON = async ()=>{
+  const payload = {};
+  for(const s of STORES){
+    payload[s] = await db[s]?.toArray?.() || [];
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download="charan_clinic_backup.json"; a.click();
+  URL.revokeObjectURL(url);
+};
+
+// Restore (JSON)
+window.restoreJSON = async ()=>{
+  const f = document.querySelector("#restoreFile").files[0];
+  if(!f) return alert("Choose a backup JSON file");
+  const text = await f.text();
+  let data;
+  try{ data = JSON.parse(text); }catch{ return alert("Invalid JSON"); }
+
+  // restore per store (replace contents)
+  for(const s of Object.keys(data)){
+    if(!db[s]?.clear || !db[s]?.bulkPut) continue;
+    await db[s].clear();
+    const arr = Array.isArray(data[s]) ? data[s] : [];
+    if(arr.length) await db[s].bulkPut(arr);
+  }
+  alert("Restore complete");
+};
+
+// CSV export helper
+window.exportCsv = async (store)=>{
+  if(!db[store]?.toArray) return alert("Unknown store");
+  const rows = await db[store].toArray();
+  if(!rows.length) return alert("Nothing to export");
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(",")].concat(
+    rows.map(r=> headers.map(h=> JSON.stringify(r[h]??"")).join(","))
+  ).join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download=`${store}.csv`; a.click();
+  URL.revokeObjectURL(url);
+};
+</script>
+</body>
+</html>
