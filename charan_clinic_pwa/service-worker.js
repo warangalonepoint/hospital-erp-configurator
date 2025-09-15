@@ -1,12 +1,14 @@
-const CACHE = "charan-pwa-v1";
+const CACHE = "charan-pwa-v3"; // bump version
 const ASSETS = [
-  "/", "/index.html", "/dashboard.html", "/supervisor.html", "/frontoffice.html",
-  "/patients.html", "/bookings.html", "/booking-status.html", "/pharmacy.html",
-  "/lab.html", "/staff.html", "/settings.html",
-  "/styles/styles.css", "/scripts/db.js", "/scripts/auth.js",
-  "/scripts/utils.js", "/scripts/barcode.js", "/scripts/scanner.js",
-  "/public/manifest.webmanifest"
+  "./", "./index.html", "./dashboard.html", "./analytics.html",
+  "./supervisor.html", "./frontoffice.html", "./patients.html",
+  "./bookings.html", "./booking-status.html", "./pharmacy.html",
+  "./lab.html", "./staff.html", "./settings.html",
+  "./styles/styles.css", "./scripts/db.js", "./scripts/auth.js",
+  "./scripts/utils.js", "./scripts/barcode.js", "./scripts/scanner.js",
+  "./public/manifest.webmanifest"
 ];
+
 
 self.addEventListener("install", e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
