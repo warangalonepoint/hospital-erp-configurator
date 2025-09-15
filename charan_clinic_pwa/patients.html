@@ -1,16 +1,39 @@
-<!doctype html><html lang="en" data-theme="dark"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="/styles/styles.css"><title>Patients</title></head>
-<body><div class="container">
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="./styles/styles.css" />
+  <title>Patients</title>
+  <style>
+    .table{width:100%; border-collapse:collapse}
+    .table th,.table td{padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.08)}
+    .idcard{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+    .idcard canvas{background:#fff; border-radius:12px; box-shadow:var(--shadow)}
+    .flex{display:flex; gap:8px; flex-wrap:wrap}
+    .pill{display:inline-block; padding:4px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.15)}
+    .overlay{position:fixed; inset:0; background:rgba(0,0,0,.8); display:none; align-items:center; justify-content:center; z-index:50}
+    .overlay.active{display:flex}
+    .scan-box{background:var(--card); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:12px}
+    video{max-width:92vw; border-radius:12px}
+  </style>
+</head>
+<body>
+<div class="container">
   <div class="header">
-    <div class="logo"><img src="/public/icons/icon-192.png"><strong>Patients</strong></div>
-    <div class="hbtns"><a class="btn" href="/dashboard.html">← Dashboard</a></div>
+    <div class="logo"><img src="./public/icons/icon-192.png" alt=""><strong>Patients</strong></div>
+    <div class="hbtns">
+      <a class="btn" href="./dashboard.html">← Dashboard</a>
+      <button class="btn" id="scanBtn">📷 Scan</button>
+    </div>
   </div>
 
-  <div class="card">
+  <!-- Create / Update Patient -->
+  <div class="card green">
+    <h2>Patient Details</h2>
     <div class="row">
-      <input id="name" class="input" placeholder="Patient name" />
-      <input id="phone" class="input" placeholder="Phone" inputmode="tel" />
+      <input id="pName" class="input" placeholder="Patient Name" />
+      <input id="pPhone" class="input" placeholder="Phone" inputmode="tel" />
     </div>
     <div class="row">
       <input id="referredBy" class="input" placeholder="Referred by (Doctor/Hospital)" />
@@ -19,62 +42,307 @@
         <option value="percent">% Percentage</option>
         <option value="amount">₹ Amount</option>
       </select>
+      <input id="commVal" class="input" placeholder="Commission value (10 or 200)" />
     </div>
     <div class="row">
-      <input id="commVal" class="input" placeholder="Commission value (e.g., 10 or 200)" />
-      <button class="btn" onclick="savePatient()">Save</button>
+      <button class="btn" id="savePatient">Save / Update Patient</button>
+      <span id="uidHint" class="helper"></span>
     </div>
-    <div class="helper">Each patient gets a unique ID + barcode, used across bookings, pharmacy, and lab.</div>
   </div>
 
+  <!-- ID + QR -->
   <div class="card" style="margin-top:16px">
-    <h2>Scan / Search</h2>
-    <div class="row">
-      <input id="q" class="input" placeholder="Search by name / phone / UID" oninput="search()" />
+    <h2>Patient ID & QR</h2>
+    <div class="idcard">
+      <div>
+        <div><strong>UID:</strong> <span id="uidTxt">—</span></div>
+        <div class="helper">Use QR to pull history at counter / pharmacy / lab.</div>
+        <div class="flex" style="margin-top:8px">
+          <button class="btn" id="regenQR">Generate QR</button>
+          <button class="btn" id="printQR">Print</button>
+          <button class="btn" id="shareQR">Share</button>
+        </div>
+      </div>
+      <canvas id="qrCanvas" width="192" height="192"></canvas>
     </div>
-    <div id="list" class="grid" style="margin-top:12px"></div>
+  </div>
+
+  <!-- Clinical Note (Doctor) -->
+  <div class="card" style="margin-top:16px">
+    <h2>Visit Note</h2>
+    <div class="row">
+      <input id="nextDate" class="input" type="date" />
+      <input id="nextTime" class="input" type="time" />
+    </div>
+    <div class="row">
+      <textarea id="treatment" class="input" placeholder="Treatment notes..." rows="3"></textarea>
+    </div>
+    <div class="row">
+      <textarea id="presc" class="input" placeholder="Prescription..." rows="2"></textarea>
+    </div>
+    <div class="flex">
+      <button class="btn" id="openPad">✍ Handwriting</button>
+      <button class="btn" id="voiceBtn">🎤 Dictate</button>
+      <label class="btn" for="attach">📎 Attach</label>
+      <input id="attach" type="file" accept="image/*,application/pdf" style="display:none" />
+      <button class="btn" id="saveNote">Save Note</button>
+      <a class="btn" id="waBtn" target="_blank">WhatsApp Reminder</a>
+    </div>
+    <div id="attachInfo" class="helper"></div>
+  </div>
+
+  <!-- History -->
+  <div class="card" style="margin-top:16px">
+    <h2>History</h2>
+    <div class="row">
+      <input id="q" class="input" placeholder="Search by name / phone / UID" />
+      <button class="btn" id="loadByQuery">Load</button>
+      <button class="btn" id="loadByUID">Load by UID</button>
+    </div>
+    <div id="history" class="grid" style="margin-top:12px"></div>
   </div>
 </div>
 
-<script type="module">
-import { db } from "/scripts/db.js";
-import { guard } from "/scripts/auth.js";
-guard(["doctor","master"]);
+<!-- Scanner overlay -->
+<div id="scanOverlay" class="overlay">
+  <div class="scan-box">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px">
+      <strong>Scan Patient QR / UID</strong>
+      <button class="btn" id="closeScan">Close</button>
+    </div>
+    <video id="scanVideo" playsinline></video>
+    <canvas id="scanCanvas" class="hidden"></canvas>
+  </div>
+</div>
 
-function uidFrom(name, phone){
+<script src="./scripts/qrcode.min.js"></script>
+<script type="module">
+import { db } from "./scripts/db.js";
+import { guard } from "./scripts/auth.js";
+import { $, walink } from "./scripts/utils.js";
+import { startScan } from "./scripts/scanner.js";
+import { openPad } from "./scripts/handwriting.js";
+import { startDictation } from "./scripts/speech.js";
+
+guard(["doctor","master","supervisor"]); // allow supervisor view if needed
+
+// --- helpers
+function genUID(name, phone){
   return (name.trim()+"-"+(phone||"").slice(-4)).toLowerCase().replace(/\s+/g,"");
 }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function setUID(uid){ $("#uidTxt").textContent = uid || "—"; $("#uidHint").textContent = uid? "Saved UID": ""; }
 
-window.savePatient = async ()=>{
-  const name = document.querySelector("#name").value.trim();
-  const phone= document.querySelector("#phone").value.trim();
-  const referredBy = document.querySelector("#referredBy").value.trim();
-  const commissionType = document.querySelector("#commType").value;
-  const commissionValue = document.querySelector("#commVal").value.trim();
+// QR
+function drawQR(text){
+  const canvas = document.getElementById("qrCanvas");
+  const qr = qrcode(0, 'M'); // auto version
+  qr.addData(text.toUpperCase()); // uppercase for robustness
+  qr.make();
+  const tileW = canvas.width  / qr.getModuleCount();
+  const tileH = canvas.height / qr.getModuleCount();
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = "#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = "#000";
+  for (let r=0; r<qr.getModuleCount(); r++){
+    for (let c=0; c<qr.getModuleCount(); c++){
+      if(qr.isDark(r,c)){
+        ctx.fillRect(Math.round(c*tileW), Math.round(r*tileH),
+                     Math.ceil(tileW), Math.ceil(tileH));
+      }
+    }
+  }
+}
+
+async function saveOrUpdatePatient(){
+  const name = $("#pName").value.trim();
+  const phone= $("#pPhone").value.trim();
+  const referredBy = $("#referredBy").value.trim();
+  const commType = $("#commType").value;
+  const commVal  = $("#commVal").value.trim();
   if(!name) return alert("Name required");
-  const uid = uidFrom(name, phone);
-  await db.patients.put({ uid, name, phone, referredBy });
-  if(commissionType)
-    await db.referrals.put({ patientUid: uid, by: referredBy, commissionType, commissionValue });
-  alert("Saved"); search();
-};
 
-window.search = async ()=>{
-  const q = document.querySelector("#q").value.toLowerCase();
+  const uid = genUID(name, phone);
+  const existing = await db.patients.get({uid});
+  if(existing){
+    await db.patients.update(existing.id, { name, phone, referredBy });
+  }else{
+    await db.patients.put({ uid, name, phone, referredBy });
+  }
+  if(commType)
+    await db.referrals.put({ patientUid: uid, by: referredBy, commissionType: commType, commissionValue: commVal });
+
+  setUID(uid); drawQR(uid);
+  alert("Patient saved");
+}
+
+// Visit note
+async function saveVisit(){
+  const uid = $("#uidTxt").textContent;
+  if(!uid || uid==="—") return alert("Save patient first");
+
+  const note = {
+    date: todayISO(),
+    nextDate: $("#nextDate").value || todayISO(),
+    nextTime: $("#nextTime").value || "09:00",
+    treatment: $("#treatment").value.trim(),
+    prescription: $("#presc").value.trim(),
+    attachment: window.__ATTACH__ || null
+  };
+  // store as appointment + log
+  await db.appointments.put({ date: note.nextDate, time: note.nextTime, patientUid: uid, note: note.treatment, type:"visit" });
+  await db.logs.put({ ts: Date.now(), kind:"visit-note", note: JSON.stringify({uid, ...note}) });
+
+  // WhatsApp link
+  const p = await db.patients.get({uid});
+  const msg = `Hello ${p?.name||""}, next visit on ${note.nextDate}${note.nextTime?(" at "+note.nextTime):""}.
+Prescription: ${note.prescription||"-"}
+— Dr. Charan Child Clinic`;
+  $("#waBtn").href = walink(msg, p?.phone||"");
+  alert("Visit saved");
+  loadHistoryByUID(uid);
+}
+
+// Attach
+document.getElementById("attach").addEventListener("change", async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const buf = await f.arrayBuffer();
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+  window.__ATTACH__ = { name:f.name, mime:f.type, b64 };
+  $("#attachInfo").textContent = `Attached: ${f.name} (${Math.round(f.size/1024)} KB)`;
+});
+
+// Print/Share QR
+document.getElementById("regenQR").addEventListener("click", ()=>{
+  const uid = $("#uidTxt").textContent;
+  if(!uid || uid==="—") return alert("No UID");
+  drawQR(uid);
+});
+document.getElementById("printQR").addEventListener("click", ()=>{
+  const c = document.getElementById("qrCanvas");
+  const w = window.open("");
+  w.document.write(`<img src="${c.toDataURL()}" style="width:256px;height:256px">`);
+  w.print(); w.close();
+});
+document.getElementById("shareQR").addEventListener("click", async ()=>{
+  const uid = $("#uidTxt").textContent;
+  const c = document.getElementById("qrCanvas");
+  const blob = await (await fetch(c.toDataURL())).blob();
+  const file = new File([blob], `${uid}.png`, {type:"image/png"});
+  if(navigator.share && navigator.canShare?.({files:[file]})){
+    await navigator.share({ title:"Patient QR", text:uid, files:[file] });
+  }else{
+    alert("Share not supported; printing instead."); window.print();
+  }
+});
+
+// Handwriting & Speech
+document.getElementById("openPad").addEventListener("click", async ()=>{
+  const text = await openPad(); // returns drawn PNG + optional extracted text (manual)
+  if(text?.note) document.getElementById("treatment").value += (document.getElementById("treatment").value? "\n":"") + text.note;
+  if(text?.imageB64){
+    window.__ATTACH__ = { name:"handwriting.png", mime:"image/png", b64: text.imageB64.split(",")[1] };
+    $("#attachInfo").textContent = `Attached: handwriting.png`;
+  }
+});
+document.getElementById("voiceBtn").addEventListener("click", async ()=>{
+  const out = await startDictation();
+  if(out) document.getElementById("treatment").value += (document.getElementById("treatment").value? "\n":"") + out;
+});
+
+// Save buttons
+document.getElementById("savePatient").addEventListener("click", saveOrUpdatePatient);
+document.getElementById("saveNote").addEventListener("click", saveVisit);
+
+// Search/History
+document.getElementById("loadByQuery").addEventListener("click", async ()=>{
+  const q = $("#q").value.toLowerCase();
   const all = await db.patients.toArray();
-  const items = all.filter(p => !q || p.name.toLowerCase().includes(q) || p.phone?.includes(q) || p.uid.includes(q));
-  const list = document.querySelector("#list"); list.innerHTML = "";
-  items.forEach(p=>{
-    const el = document.createElement("div");
-    el.className = "card";
-    el.innerHTML = `<strong>${p.name}</strong><div class="helper">${p.phone||""} • ${p.uid}</div>
-      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
-        <a class="btn" href="https://wa.me/?text=${encodeURIComponent('Next visit reminder for '+p.name)}">WhatsApp Reminder</a>
-        <a class="btn" href="/booking-status.html?uid=${p.uid}">History</a>
-      </div>`;
-    list.appendChild(el);
+  const hit = all.find(p=> p.uid.includes(q) || (p.phone||"").includes(q) || (p.name||"").toLowerCase().includes(q));
+  if(!hit) return alert("No match");
+  fillPatient(hit);
+});
+document.getElementById("loadByUID").addEventListener("click", async ()=>{
+  const q = $("#q").value.trim();
+  const p = await db.patients.get({uid:q});
+  if(!p) return alert("UID not found");
+  fillPatient(p);
+});
+
+// Scanner
+let stopScanFn=null;
+document.getElementById("scanBtn").addEventListener("click", async ()=>{
+  document.getElementById("scanOverlay").classList.add("active");
+  stopScanFn = await startScan(document.getElementById("scanVideo"), document.getElementById("scanCanvas"), code=>{
+    document.getElementById("scanOverlay").classList.remove("active");
+    stopScanFn && stopScanFn();
+    const uid = (code||"").trim().toLowerCase();
+    document.getElementById("q").value = uid;
+    loadByUIDValue(uid);
   });
-};
-search();
+});
+document.getElementById("closeScan").addEventListener("click", ()=>{
+  stopScanFn && stopScanFn();
+  document.getElementById("scanOverlay").classList.remove("active");
+});
+
+async function loadByUIDValue(uid){
+  const p = await db.patients.get({uid});
+  if(!p){ alert("Patient not found"); return; }
+  fillPatient(p);
+}
+
+function fillPatient(p){
+  $("#pName").value = p.name||"";
+  $("#pPhone").value= p.phone||"";
+  $("#referredBy").value = p.referredBy||"";
+  setUID(p.uid); drawQR(p.uid);
+  loadHistoryByUID(p.uid);
+  $("#nextDate").value = todayISO();
+}
+
+async function loadHistoryByUID(uid){
+  const wrap = document.getElementById("history");
+  wrap.innerHTML = "";
+
+  // Bookings
+  const bookings = (await db.bookings.where("patientUid").equals(uid).toArray()).slice(-5).reverse();
+  const bk = document.createElement("div"); bk.className="card";
+  bk.innerHTML = `<h2>Bookings</h2>${bookings.length? "":'<div class="helper">No recent</div>'}`;
+  bookings.forEach(b=>{
+    const d = document.createElement("div");
+    d.className="helper";
+    d.textContent = `${b.date} ${b.slot||""} • ${b.type||"manual"}`;
+    bk.appendChild(d);
+  });
+  wrap.appendChild(bk);
+
+  // Lab
+  const labs = (await db.labInvoices.where("patientUid").equals(uid).toArray()).slice(-5).reverse();
+  const lb = document.createElement("div"); lb.className="card";
+  lb.innerHTML = `<h2>Lab</h2>${labs.length? "":'<div class="helper">No recent</div>'}`;
+  labs.forEach(i=>{
+    const d = document.createElement("div"); d.className="helper";
+    d.textContent = `${i.date} • ${i.tests.map(t=>t.name).join(", ")} • ₹${(i.total||0).toFixed(2)}`;
+    lb.appendChild(d);
+  });
+  wrap.appendChild(lb);
+
+  // Pharmacy
+  const invs = (await db.invoices.toArray()).filter(x=> x.patientUid===uid).slice(-5).reverse();
+  const ph = document.createElement("div"); ph.className="card";
+  ph.innerHTML = `<h2>Pharmacy</h2>${invs.length? "":'<div class="helper">No recent</div>'}`;
+  invs.forEach(i=>{
+    const d = document.createElement("div"); d.className="helper";
+    d.textContent = `${i.date} • ${i.number} • ₹${(i.total||0).toFixed(2)}`;
+    ph.appendChild(d);
+  });
+  wrap.appendChild(ph);
+}
+
+// If page opened with ?q=uid
+const urlQ = new URLSearchParams(location.search).get("q");
+if(urlQ){ document.getElementById("q").value = urlQ; loadByUIDValue(urlQ); }
 </script>
-</body></html>
+</body>
+</html>
