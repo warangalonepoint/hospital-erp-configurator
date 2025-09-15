@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/styles/styles.css" />
+  <title>Staff • HR & Attendance</title>
+  <style>
+    .table{width:100%; border-collapse:collapse}
+    .table th,.table td{padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.08)}
+    .pill{display:inline-block; padding:4px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.15)}
+    .flex{display:flex; gap:8px; flex-wrap:wrap}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo"><img src="/public/icons/icon-192.png" alt=""><strong>Staff • HR & Attendance</strong></div>
+    <div class="hbtns">
+      <a class="btn" href="/dashboard.html">← Dashboard</a>
+      <a class="btn" href="/supervisor.html">Supervisor</a>
+    </div>
+  </div>
+
+  <!-- Add Staff -->
+  <div class="card green">
+    <h2>Add Staff</h2>
+    <div class="row">
+      <input id="sName" class="input" placeholder="Full name" />
+      <input id="sPhone" class="input" placeholder="Phone" inputmode="tel" />
+    </div>
+    <div class="row">
+      <select id="sRole" class="input">
+        <option value="Nurse">Nurse</option>
+        <option value="Pharmacist">Pharmacist</option>
+        <option value="Lab Tech">Lab Tech</option>
+        <option value="Front Office">Front Office</option>
+        <option value="Assistant">Assistant</option>
+        <option value="Other">Other</option>
+      </select>
+      <input id="sShift" class="input" placeholder="Shift (e.g., 9:30–18:30)" />
+    </div>
+    <div class="row">
+      <button class="btn" onclick="addStaff()">Add</button>
+      <span class="helper">Roster fields are editable later.</span>
+    </div>
+  </div>
+
+  <!-- Staff List -->
+  <div class="card" style="margin-top:16px">
+    <h2>Staff List</h2>
+    <table class="table" id="staffTable">
+      <thead>
+        <tr><th>Name</th><th>Role</th><th>Shift</th><th>Phone</th><th class="hidden">ID</th><th>Actions</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Attendance: Quick Panel -->
+  <div class="grid" style="margin-top:16px">
+    <div class="card blue">
+      <h2>Quick Sign In / Out</h2>
+      <div class="row">
+        <select id="attStaff" class="input"></select>
+      </div>
+      <div class="flex">
+        <button class="btn" onclick="signIn()">Sign In</button>
+        <button class="btn" onclick="signOut()">Sign Out</button>
+      </div>
+      <div class="helper" id="attHint">Select a staff member and record attendance.</div>
+    </div>
+
+    <div class="card lilac">
+      <h2>Today</h2>
+      <table class="table" id="todayTable">
+        <thead><tr><th>Name</th><th>In</th><th>Out</th><th>Hours</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Weekly Summary -->
+  <div class="card" style="margin-top:16px">
+    <h2>This Week Summary</h2>
+    <div class="row">
+      <button class="btn" onclick="loadWeek()">Refresh</button>
+      <button class="btn" onclick="exportAttendance()">Export CSV</button>
+      <span class="helper">Shows Mon–Sun totals (hours approximate if not signed out).</span>
+    </div>
+    <table class="table" id="weekTable" style="margin-top:10px">
+      <thead><tr><th>Name</th><th>Days Present</th><th>Total Hours</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script type="module">
+import { db } from "/scripts/db.js";
+import { guard } from "/scripts/auth.js";
+import { $, $$ } from "/scripts/utils.js";
+
+guard(["supervisor","doctor","master"]);
+
+function startOfDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
+function endOfDay(d){ const x=new Date(d); x.setHours(23,59,59,999); return x; }
+function startOfWeek(d=new Date()){ const x=new Date(d); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x; }
+function endOfWeek(d=new Date()){ const s=startOfWeek(d); const e=new Date(s); e.setDate(e.getDate()+6); e.setHours(23,59,59,999); return e; }
+function hhmm(ts){ if(!ts) return ""; const d=new Date(ts); return d.toTimeString().slice(0,5); }
+function diffHours(a,b){ const ms=(b-a); return Math.max(0, ms/(1000*60*60)); }
+
+async function addStaff(){
+  const name=$("#sName").value.trim();
+  const phone=$("#sPhone").value.trim();
+  const role=$("#sRole").value;
+  const shift=$("#sShift").value.trim();
+  if(!name) return alert("Name required");
+  await db.staff.put({ name, phone, role, shift });
+  $("#sName").value=""; $("#sPhone").value=""; $("#sShift").value="";
+  await loadStaff();
+}
+
+async function deleteStaff(id){
+  if(!confirm("Delete this staff member?")) return;
+  await db.staff.delete(id);
+  await loadStaff();
+}
+
+async function updateShift(id){
+  const s = prompt("Enter new shift (e.g., 9:30–18:30):");
+  if(s==null) return;
+  await db.staff.update(id, { shift: s.trim() });
+  await loadStaff();
+}
+
+async function loadStaff(){
+  const tbody = $("#staffTable tbody"); tbody.innerHTML="";
+  const list = await db.staff.toArray();
+  // populate select for attendance
+  const sel = $("#attStaff"); sel.innerHTML="";
+  list.forEach(s=>{
+    const opt=document.createElement("option");
+    opt.value=s.id; opt.textContent=`${s.name} — ${s.role}`;
+    sel.appendChild(opt);
+  });
+
+  list.forEach(s=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${s.name}</strong></td>
+      <td>${s.role||""}</td>
+      <td><span class="pill">${s.shift||"-"}</span></td>
+      <td>${s.phone||""}</td>
+      <td class="hidden">${s.id}</td>
+      <td class="flex">
+        <button class="btn" data-edit="${s.id}">Edit Shift</button>
+        <button class="btn" data-del="${s.id}">Delete</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // wire actions
+  tbody.querySelectorAll("[data-del]").forEach(b=>{
+    b.addEventListener("click", e=> deleteStaff(+e.currentTarget.dataset.del));
+  });
+  tbody.querySelectorAll("[data-edit]").forEach(b=>{
+    b.addEventListener("click", e=> updateShift(+e.currentTarget.dataset.edit));
+  });
+
+  await loadToday();
+  await loadWeek();
+}
+
+async function signIn(){
+  const staffId = +$("#attStaff").value;
+  if(!staffId) return alert("Select staff");
+  const now = Date.now();
+  // check if already signed-in today without sign-out
+  const todayS = startOfDay(new Date()), todayE=endOfDay(new Date());
+  const logs = await db.attendance.where("staffId").equals(staffId).toArray();
+  const open = logs.find(l=> l.in && (!l.out) && l.in>=todayS.getTime() && l.in<=todayE.getTime());
+  if(open) return alert("Already signed in today. Please Sign Out first.");
+  await db.attendance.put({ staffId, in: now, out: null });
+  await loadToday();
+}
+
+async function signOut(){
+  const staffId = +$("#attStaff").value;
+  if(!staffId) return alert("Select staff");
+  const todayS = startOfDay(new Date()), todayE=endOfDay(new Date());
+  const logs = await db.attendance.where("staffId").equals(staffId).toArray();
+  // find latest open record today
+  const open = logs.filter(l=> l.in && !l.out && l.in>=todayS.getTime() && l.in<=todayE.getTime())
+                   .sort((a,b)=> b.in - a.in)[0];
+  if(!open) return alert("No open sign-in found for today.");
+  await db.attendance.update(open.id, { out: Date.now() });
+  await loadToday();
+}
+
+async function loadToday(){
+  const tbody = $("#todayTable tbody"); tbody.innerHTML="";
+  const todayS = startOfDay(new Date()), todayE=endOfDay(new Date());
+  const all = await db.attendance.toArray();
+  const todayLogs = all.filter(l=> l.in>=todayS.getTime() && l.in<=todayE.getTime())
+                       .sort((a,b)=> (a.in)-(b.in));
+  for(const l of todayLogs){
+    const s = await db.staff.get(l.staffId);
+    const outTs = l.out || Date.now();
+    const hrs = diffHours(l.in, outTs);
+    const tr=document.createElement("tr");
+    tr.innerHTML = `<td>${s?.name||"#"+l.staffId}</td>
+      <td>${hhmm(l.in)}</td><td>${l.out? hhmm(l.out): ""}</td>
+      <td>${hrs.toFixed(2)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadWeek(){
+  const tbody = $("#weekTable tbody"); tbody.innerHTML="";
+  const wS = startOfWeek(), wE = endOfWeek();
+  const logs = (await db.attendance.toArray())
+    .filter(l=> l.in>=wS.getTime() && l.in<=wE.getTime());
+  const byStaff = {};
+  logs.forEach(l=>{
+    (byStaff[l.staffId] ||= []).push(l);
+  });
+
+  const staffMap = {};
+  (await db.staff.toArray()).forEach(s=> staffMap[s.id]=s);
+
+  Object.entries(byStaff).forEach(([sid, arr])=>{
+    let days = new Set(arr.map(l=> new Date(l.in).toDateString())).size;
+    let hours = 0;
+    arr.forEach(l=> hours += diffHours(l.in, l.out || Date.now()));
+    const tr=document.createElement("tr");
+    tr.innerHTML = `<td>${staffMap[sid]?.name||("#"+sid)}</td><td>${days}</td><td>${hours.toFixed(2)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// CSV export (week range)
+async function exportAttendance(){
+  const wS = startOfWeek(), wE = endOfWeek();
+  const logs = (await db.attendance.toArray())
+    .filter(l=> l.in>=wS.getTime() && l.in<=wE.getTime());
+  if(!logs.length) return alert("No records for this week.");
+  const staffMap = {}; (await db.staff.toArray()).forEach(s=> staffMap[s.id]=s);
+  const rows = logs.map(l=>({
+    staffId: l.staffId,
+    name: staffMap[l.staffId]?.name||"",
+    in: new Date(l.in).toISOString(),
+    out: l.out? new Date(l.out).toISOString() : "",
+    hours: (diffHours(l.in, l.out||Date.now())).toFixed(2)
+  }));
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(",")].concat(rows.map(r=> headers.map(h=> JSON.stringify(r[h]??"")).join(","))).join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download="attendance_week.csv"; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// init
+loadStaff();
+</script>
+</body>
+</html>
