@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/styles/styles.css" />
+  <title>Pharmacy</title>
+  <style>
+    .tabs{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 16px}
+    .tab{padding:10px 14px; border-radius:12px; cursor:pointer; border:1px solid rgba(255,255,255,.1)}
+    .tab.active{background:var(--primary); color:#fff; border-color:transparent}
+    .section{display:none}
+    .section.active{display:block}
+    .row-3{display:grid; gap:12px}
+    @media(min-width:720px){ .row-3{grid-template-columns:1fr 1fr 1fr} }
+    .table{width:100%; border-collapse:collapse}
+    .table th,.table td{padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.08)}
+    .badge{padding:2px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.2); font-size:.85rem}
+    .overlay{position:fixed; inset:0; background:rgba(0,0,0,.8); display:none; align-items:center; justify-content:center; z-index:50}
+    .overlay.active{display:flex}
+    .scan-box{background:var(--card); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:12px}
+    video{max-width:92vw; border-radius:12px}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo"><img src="/public/icons/icon-192.png" alt=""><strong>Pharmacy</strong></div>
+    <div class="hbtns">
+      <a class="btn" href="/dashboard.html">← Dashboard</a>
+      <a class="btn" href="/supervisor.html">Supervisor</a>
+    </div>
+  </div>
+
+  <!-- Module tiles -->
+  <div class="grid" style="margin-bottom:16px">
+    <div class="card green tile" onclick="openTab('billing')"><h2>1) Billing</h2><div class="helper">Sale • Purchase • Returns • e-Invoice (PDF)</div></div>
+    <div class="card blue tile" onclick="openTab('inventory')"><h2>2) Inventory</h2><div class="helper">Stock • Batch/Expiry • Re-order</div></div>
+    <div class="card lilac tile" onclick="openTab('gst')"><h2>3) GST & Compliance</h2><div class="helper">GSTR-1/2/3B • 2A-2B</div></div>
+    <div class="card orange tile" onclick="openTab('reports')"><h2>4) Reports & Analysis</h2><div class="helper">Sales • Purchase • P&L</div></div>
+    <div class="card purple tile" onclick="openTab('accounts')"><h2>5) Accounts</h2><div class="helper">Voucher • Ledgers • Outstanding</div></div>
+    <div class="card pink tile" onclick="openTab('utilities')"><h2>6) Utilities</h2><div class="helper">Rate Master • Lists • Export</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="billing" onclick="openTab('billing')">Billing</div>
+    <div class="tab" data-tab="inventory" onclick="openTab('inventory')">Inventory</div>
+    <div class="tab" data-tab="gst" onclick="openTab('gst')">GST</div>
+    <div class="tab" data-tab="reports" onclick="openTab('reports')">Reports</div>
+    <div class="tab" data-tab="accounts" onclick="openTab('accounts')">Accounts</div>
+    <div class="tab" data-tab="utilities" onclick="openTab('utilities')">Utilities</div>
+  </div>
+
+  <!-- ========== BILLING ========== -->
+  <section id="billing" class="section active">
+    <div class="grid">
+      <div class="card green">
+        <h2>Sale</h2>
+        <div class="row">
+          <input id="salePatientUid" class="input" placeholder="Patient UID / Phone (optional)" />
+        </div>
+        <div class="row">
+          <input id="saleSku" class="input" placeholder="Scan or enter SKU / barcode" />
+          <button class="btn" onclick="scan('saleSku')">📷 Scan</button>
+        </div>
+        <div class="row">
+          <input id="saleQty" class="input" type="number" placeholder="Qty" value="1"/>
+          <button class="btn" onclick="addToCart('sale')">Add</button>
+        </div>
+        <div class="helper">Tip: SKU = product code. You can add via camera scanner.</div>
+      </div>
+
+      <div class="card blue">
+        <h2>Purchase</h2>
+        <div class="row">
+          <input id="pSku" class="input" placeholder="SKU / barcode" />
+          <button class="btn" onclick="scan('pSku')">📷 Scan</button>
+        </div>
+        <div class="row">
+          <input id="pName" class="input" placeholder="Item name" />
+          <input id="pMRP" class="input" type="number" step="0.01" placeholder="MRP (₹)" />
+        </div>
+        <div class="row">
+          <input id="pRate" class="input" type="number" step="0.01" placeholder="Purchase Rate (₹)" />
+          <input id="pGST" class="input" type="number" step="0.01" placeholder="GST % (e.g., 12)" />
+        </div>
+        <div class="row">
+          <input id="pBatch" class="input" placeholder="Batch #" />
+          <input id="pExpiry" class="input" type="month" placeholder="Expiry YYYY-MM" />
+        </div>
+        <div class="row">
+          <input id="pQty" class="input" type="number" placeholder="Qty" value="1" />
+          <button class="btn" onclick="purchase()">Add to Stock</button>
+        </div>
+      </div>
+
+      <div class="card lilac">
+        <h2>Cart</h2>
+        <div id="cartList"></div>
+        <div class="row" style="margin-top:8px">
+          <input id="saleGstPct" class="input" type="number" step="0.01" value="12" placeholder="GST % overall (editable)"/>
+          <input id="saleDiscount" class="input" type="number" step="0.01" value="0" placeholder="Discount ₹"/>
+        </div>
+        <div class="row">
+          <button class="btn" onclick="saveSale()">Save Sale Invoice</button>
+          <button class="btn" onclick="clearCart()">Clear Cart</button>
+        </div>
+        <div class="helper" id="cartTotals">Total: ₹0.00</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== INVENTORY ========== -->
+  <section id="inventory" class="section">
+    <div class="card">
+      <h2>Current Stock</h2>
+      <table class="table" id="stockTable">
+        <thead><tr>
+          <th>SKU</th><th>Name</th><th>Batch</th><th>Expiry</th><th>Qty</th><th>MRP</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="grid" style="margin-top:16px">
+      <div class="card orange">
+        <h2>Near Expiry (≤ 60 days)</h2>
+        <div id="nearExpiryList" class="grid"></div>
+      </div>
+      <div class="card pink">
+        <h2>Re-order Suggestions</h2>
+        <div class="helper">Min/Max not yet set — placeholder rules: suggest if total SKU qty &lt;= 5.</div>
+        <div id="reorderList" class="grid"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== GST & COMPLIANCE (placeholders) ========== -->
+  <section id="gst" class="section">
+    <div class="card">
+      <h2>GST & Compliance</h2>
+      <div class="helper">Prepare **GSTR-1 / GSTR-2 / GSTR-3B** data from invoices. Export CSV.</div>
+      <div class="row">
+        <button class="btn" onclick="exportCsv('invoices')">Export Sales (CSV)</button>
+        <button class="btn" onclick="exportCsv('invoiceItems')">Export Items (CSV)</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== REPORTS (placeholders) ========== -->
+  <section id="reports" class="section">
+    <div class="card">
+      <h2>Reports & Analysis</h2>
+      <div class="row-3">
+        <div class="card green">
+          <h2>Sales Analysis</h2>
+          <div class="helper">Compute totals by day/week/month; top products.</div>
+          <button class="btn" onclick="reportSales()">Run</button>
+          <div id="salesReport" class="helper"></div>
+        </div>
+        <div class="card blue">
+          <h2>Purchase Analysis</h2>
+          <div class="helper">Totals & vendor trends (if vendors added later).</div>
+          <button class="btn" onclick="reportPurchase()">Run</button>
+          <div id="purchaseReport" class="helper"></div>
+        </div>
+        <div class="card lilac">
+          <h2>P&amp;L Snapshot</h2>
+          <div class="helper">Rough: Sales − Purchase (no expenses yet).</div>
+          <button class="btn" onclick="reportPL()">Run</button>
+          <div id="plReport" class="helper"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== ACCOUNTS (placeholders) ========== -->
+  <section id="accounts" class="section">
+    <div class="card">
+      <h2>Accounts</h2>
+      <div class="helper">Voucher Entry, Outstanding, Ledgers (to be expanded).</div>
+      <div class="row">
+        <button class="btn" onclick="alert('Voucher entry TODO')">Voucher Entry</button>
+        <button class="btn" onclick="alert('Outstanding report TODO')">Outstanding</button>
+        <button class="btn" onclick="alert('Ledger compare TODO')">Ledger Compare</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== UTILITIES (placeholders) ========== -->
+  <section id="utilities" class="section">
+    <div class="card">
+      <h2>Utilities</h2>
+      <div class="row">
+        <button class="btn" onclick="alert('Rate Master TODO')">Prescription/Rate Master</button>
+        <button class="btn" onclick="exportCsv('pharmacyItems')">Export Items CSV</button>
+        <button class="btn" onclick="exportCsv('stockBatches')">Export Batches CSV</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Scanner overlay -->
+<div id="scanOverlay" class="overlay">
+  <div class="scan-box">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px">
+      <strong>Scan Barcode / QR</strong>
+      <button class="btn" onclick="closeScan()">Close</button>
+    </div>
+    <video id="scanVideo" playsinline></video>
+    <canvas id="scanCanvas" class="hidden"></canvas>
+  </div>
+</div>
+
+<script type="module">
+import { db } from "/scripts/db.js";
+import { guard } from "/scripts/auth.js";
+import { $, $$ } from "/scripts/utils.js";
+import { startScan } from "/scripts/scanner.js";
+
+guard(["supervisor","doctor","master"]);
+
+let cart = []; // {sku,name,qty,rate,gstPct,mrp}
+let scanTargetInputId = null;
+let stopScanFn = null;
+
+// --------- Tabs ----------
+window.openTab = (key)=>{
+  $$(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===key));
+  $$(".section").forEach(s=>s.classList.toggle("active", s.id===key));
+  if(key==="inventory"){ loadInventory(); }
+};
+
+// --------- Scanner ----------
+window.scan = async (inputId)=>{
+  scanTargetInputId = inputId;
+  $("#scanOverlay").classList.add("active");
+  const video = $("#scanVideo"), canvas=$("#scanCanvas");
+  stopScanFn = await startScan(video, canvas, (code)=>{
+    document.getElementById(scanTargetInputId).value = code;
+  });
+};
+window.closeScan = ()=>{
+  if(stopScanFn) stopScanFn();
+  $("#scanOverlay").classList.remove("active");
+};
+
+// --------- Purchase flow ----------
+window.purchase = async ()=>{
+  const sku = $("#pSku").value.trim();
+  const name= $("#pName").value.trim();
+  const mrp = parseFloat($("#pMRP").value||"0");
+  const rate= parseFloat($("#pRate").value||"0");
+  const gst = parseFloat($("#pGST").value||"0");
+  const batch=$("#pBatch").value.trim();
+  const exp  = $("#pExpiry").value; // YYYY-MM
+  const qty  = parseInt($("#pQty").value||"0",10);
+  if(!sku || !name || !batch || !qty) return alert("SKU, Name, Batch, Qty required");
+
+  // upsert item
+  const ex = await db.pharmacyItems.get({sku});
+  if(!ex){ await db.pharmacyItems.put({ sku, name, hsn:"", gst, mrp }); }
+  else{
+    // keep latest MRP/GST if provided
+    await db.pharmacyItems.update(ex.id, {
+      name: name || ex.name,
+      gst: isNaN(gst)? ex.gst : gst,
+      mrp: isNaN(mrp)? ex.mrp : mrp
+    });
+  }
+
+  // batch stock
+  const existBatch = await db.stockBatches.get({sku, batch});
+  if(existBatch){
+    await db.stockBatches.update(existBatch.id, { qty: (existBatch.qty||0)+qty, expiry: exp });
+  }else{
+    await db.stockBatches.put({ sku, batch, expiry: exp, qty });
+  }
+
+  // movement
+  await db.stockMoves?.put?.({ ts: Date.now(), kind:"purchase", sku, batch, qty, rate });
+
+  alert("Stock added");
+  // clear inputs
+  ["pSku","pName","pMRP","pRate","pGST","pBatch","pExpiry","pQty"].forEach(id=>document.getElementById(id).value="");
+  loadInventory();
+};
+
+// --------- Sale flow ----------
+window.addToCart = async (mode)=>{
+  const sku = $("#saleSku").value.trim();
+  const qty = parseInt($("#saleQty").value||"0",10);
+  if(!sku || !qty) return alert("Enter SKU & Qty");
+  const item = await db.pharmacyItems.get({sku});
+  if(!item) return alert("Item not found. Add via Purchase first.");
+
+  // choose batch (simple: pick earliest expiry with stock)
+  const batches = await db.stockBatches.where({sku}).toArray();
+  const avail = batches.filter(b=> (b.qty||0) > 0).sort((a,b)=> (a.expiry||"") < (b.expiry||"") ? -1:1);
+  if(!avail.length) return alert("No stock available");
+
+  // allocate qty from batches
+  let remaining = qty;
+  const rate = item.mrp; // basic: selling at MRP (adjust as needed)
+  const gstPct = item.gst||0;
+
+  for(const b of avail){
+    if(remaining<=0) break;
+    const take = Math.min(remaining, b.qty);
+    cart.push({ sku, name:item.name, batch:b.batch, qty:take, rate, gstPct, mrp:item.mrp, expiry:b.expiry });
+    remaining -= take;
+  }
+  if(remaining>0) alert(`Only partial qty allocated. Short by ${remaining}.`);
+
+  $("#saleSku").value=""; $("#saleQty").value="1";
+  renderCart();
+};
+
+function renderCart(){
+  const wrap = $("#cartList"); wrap.innerHTML = "";
+  if(!cart.length){ wrap.innerHTML = `<div class="helper">Cart is empty</div>`; updateTotals(); return; }
+  const tbl = document.createElement("table"); tbl.className="table";
+  tbl.innerHTML = `<thead><tr><th>SKU</th><th>Name</th><th>Batch</th><th>Qty</th><th>Rate</th><th>GST%</th><th>Line</th><th></th></tr></thead>`;
+  const tb = document.createElement("tbody");
+  cart.forEach((it,idx)=>{
+    const line = (it.qty*it.rate);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${it.sku}</td><td>${it.name}</td><td>${it.batch}</td>
+      <td><input data-i="${idx}" class="input qty" type="number" value="${it.qty}" style="max-width:80px"/></td>
+      <td>₹${it.rate.toFixed(2)}</td><td>${(it.gstPct||0).toFixed(2)}</td><td>₹${line.toFixed(2)}</td>
+      <td><button class="btn" data-rm="${idx}">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb); wrap.appendChild(tbl);
+
+  // wire qty updates/remove
+  wrap.querySelectorAll(".qty").forEach(inp=>{
+    inp.addEventListener("change", e=>{
+      const i = +e.target.dataset.i; cart[i].qty = Math.max(1, parseInt(e.target.value||"1",10)); updateTotals(true);
+    });
+  });
+  wrap.querySelectorAll("[data-rm]").forEach(btn=>{
+    btn.addEventListener("click", e=>{
+      const i = +e.target.dataset.rm; cart.splice(i,1); renderCart();
+    });
+  });
+
+  updateTotals();
+}
+
+function updateTotals(recalcOnly=false){
+  const gstPctOverall = parseFloat($("#saleGstPct").value||"0");
+  const discount = parseFloat($("#saleDiscount").value||"0");
+  let base = 0;
+  cart.forEach(it=> base += it.qty*it.rate);
+  const gst = base * (gstPctOverall/100);
+  const total = Math.max(0, base + gst - discount);
+  $("#cartTotals").textContent = `Base ₹${base.toFixed(2)} + GST ₹${gst.toFixed(2)} − Disc ₹${discount.toFixed(2)} = Total ₹${total.toFixed(2)}`;
+  if(!recalcOnly) {
+    $("#saleGstPct").oninput = ()=>updateTotals(true);
+    $("#saleDiscount").oninput = ()=>updateTotals(true);
+  }
+}
+
+window.clearCart = ()=>{ cart=[]; renderCart(); };
+
+window.saveSale = async ()=>{
+  if(!cart.length) return alert("Cart empty");
+  // stock check
+  for(const it of cart){
+    const batch = await db.stockBatches.get({sku:it.sku, batch:it.batch});
+    if(!batch || batch.qty < it.qty) return alert(`Insufficient stock for ${it.sku} / ${it.batch}`);
+  }
+
+  // invoice number simple counter
+  const last = await db.invoices.orderBy("id").last();
+  const number = `INV-${(last?.id||0)+1}`.padStart(8,"0");
+  const date = new Date().toISOString().slice(0,10);
+  const patientUid = $("#salePatientUid").value.trim() || "";
+
+  // totals
+  const gstPctOverall = parseFloat($("#saleGstPct").value||"0");
+  const discount = parseFloat($("#saleDiscount").value||"0");
+  let base=0; cart.forEach(it=> base+= it.qty*it.rate);
+  const gst = base*(gstPctOverall/100);
+  const total = Math.max(0, base+gst-discount);
+
+  const invId = await db.invoices.put({ number, date, patientUid, total, gst, discount });
+  for(const it of cart){
+    await db.invoiceItems.put({ invoiceId: invId, sku: it.sku, qty: it.qty, rate: it.rate, gst: gstPctOverall });
+    // reduce stock
+    const b = await db.stockBatches.get({sku:it.sku, batch:it.batch});
+    await db.stockBatches.update(b.id, { qty: b.qty - it.qty });
+    // movement
+    await db.stockMoves?.put?.({ ts: Date.now(), kind:"sale", sku: it.sku, batch: it.batch, qty: it.qty, rate: it.rate });
+  }
+
+  alert(`Saved invoice ${number} • Total ₹${total.toFixed(2)}`);
+  cart=[]; renderCart(); loadInventory();
+};
+
+// --------- Inventory views ----------
+async function loadInventory(){
+  const tbody = $("#stockTable tbody"); tbody.innerHTML="";
+  const batches = await db.stockBatches.toArray();
+  for(const b of batches){
+    const it = await db.pharmacyItems.get({sku:b.sku});
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${b.sku}</td><td>${it?.name||""}</td><td>${b.batch}</td><td>${b.expiry||""}</td><td>${b.qty||0}</td><td>₹${(it?.mrp||0).toFixed(2)}</td>`;
+    tbody.appendChild(tr);
+  }
+  // near expiry
+  const now = new Date();
+  const near = batches.filter(b=>{
+    if(!b.expiry) return false;
+    const [Y,M] = b.expiry.split("-").map(Number);
+    const expD = new Date(Y, (M||1)-1, 1);
+    const diff = (expD - now)/(1000*60*60*24);
+    return diff <= 60 && (b.qty||0)>0;
+  });
+  const ne = $("#nearExpiryList"); ne.innerHTML="";
+  near.forEach(async b=>{
+    const it = await db.pharmacyItems.get({sku:b.sku});
+    const div = document.createElement("div");
+    div.className="card";
+    div.innerHTML = `<strong>${it?.name||b.sku}</strong><div class="helper">Batch ${b.batch} • Exp ${b.expiry} • Qty ${b.qty}</div>`;
+    ne.appendChild(div);
+  });
+
+  // reorder suggestions
+  const bySku = {};
+  batches.forEach(b=> bySku[b.sku]=(bySku[b.sku]||0)+(b.qty||0));
+  const low = Object.entries(bySku).filter(([sku,qty])=> qty<=5);
+  const rl = $("#reorderList"); rl.innerHTML="";
+  for(const [sku,qty] of low){
+    const it = await db.pharmacyItems.get({sku});
+    const div = document.createElement("div");
+    div.className="card";
+    div.innerHTML = `<strong>${it?.name||sku}</strong><div class="helper">Total Qty: ${qty} • Suggest re-order to 20</div>`;
+    rl.appendChild(div);
+  }
+}
+
+// --------- Exports & Reports (simple placeholders) ----------
+window.exportCsv = async (store)=>{
+  const rows = await db[store].toArray();
+  if(!rows.length) return alert("Nothing to export");
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(",")].concat(rows.map(r=> headers.map(h=> JSON.stringify(r[h]??"")).join(","))).join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download=`${store}.csv`; a.click();
+  URL.revokeObjectURL(url);
+};
+
+window.reportSales = async ()=>{
+  const invs = await db.invoices.toArray();
+  const total = invs.reduce((s,i)=>s+(i.total||0),0);
+  document.getElementById("salesReport").textContent = `Invoices: ${invs.length} • Total ₹${total.toFixed(2)}`;
+};
+window.reportPurchase = async ()=>{
+  const moves = await db.stockMoves?.where("kind").equals("purchase").toArray() || [];
+  const qty = moves.reduce((s,m)=>s+(m.qty||0),0);
+  document.getElementById("purchaseReport").textContent = `Purchase entries: ${moves.length} • Total Qty ${qty}`;
+};
+window.reportPL = async ()=>{
+  const invs = await db.invoices.toArray();
+  const sales = invs.reduce((s,i)=>s+(i.total||0),0);
+  const purchases = (await db.stockMoves?.where("kind").equals("purchase").toArray() || [])
+    .reduce((s,m)=>s+(m.qty*(m.rate||0)),0);
+  document.getElementById("plReport").textContent = `Sales ₹${sales.toFixed(2)} − Purchases ₹${purchases.toFixed(2)} = ₹${(sales-purchases).toFixed(2)}`;
+};
+
+// init
+renderCart();
+if(location.hash==="#inventory") openTab("inventory");
+</script>
+</body>
+</html>
