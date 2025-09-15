@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="./styles/styles.css" />
+  <title>Analytics • Dr. Charan Child Clinic</title>
+  <style>
+    .kpis{display:grid; gap:16px}
+    @media(min-width:720px){ .kpis{grid-template-columns:repeat(3,1fr)} }
+    .chart{background:#fff;border-radius:14px;box-shadow:var(--shadow);padding:8px}
+    .chart-title{color:var(--text); margin:6px 0 10px}
+    canvas{width:100%; height:180px}
+    .subgrid{display:grid; gap:16px}
+    @media(min-width:960px){ .subgrid{grid-template-columns:1fr 1fr 1fr} }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo"><img src="./public/icons/icon-192.png" alt=""><strong>Analytics</strong></div>
+    <div class="hbtns">
+      <a class="btn" href="./dashboard.html">← Dashboard</a>
+      <a class="btn" href="./pharmacy.html">Pharmacy</a>
+      <a class="btn" href="./booking-status.html">Bookings</a>
+      <a class="btn" href="./lab.html">Lab</a>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpis">
+    <div class="card green">
+      <h2>Pharmacy Sales</h2>
+      <div class="helper">Today: <b id="phToday">₹0.00</b></div>
+      <div class="helper">This Week: <b id="phWeek">₹0.00</b></div>
+      <div class="helper">This Month: <b id="phMonth">₹0.00</b></div>
+    </div>
+    <div class="card blue">
+      <h2>Bookings</h2>
+      <div class="helper">Today: <b id="bkToday">0</b></div>
+      <div class="helper">This Week: <b id="bkWeek">0</b></div>
+      <div class="helper">This Month: <b id="bkMonth">0</b></div>
+    </div>
+    <div class="card lilac">
+      <h2>Lab Revenue</h2>
+      <div class="helper">Today: <b id="lbToday">₹0.00</b></div>
+      <div class="helper">This Week: <b id="lbWeek">₹0.00</b></div>
+      <div class="helper">This Month: <b id="lbMonth">₹0.00</b></div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="grid" style="margin-top:16px">
+    <div class="card">
+      <h2 class="chart-title">Pharmacy Sales — Last 14 Days</h2>
+      <div class="chart"><canvas id="cPh"></canvas></div>
+    </div>
+    <div class="card">
+      <h2 class="chart-title">Bookings — Last 14 Days</h2>
+      <div class="chart"><canvas id="cBk"></canvas></div>
+    </div>
+    <div class="card">
+      <h2 class="chart-title">Lab Revenue — Last 14 Days</h2>
+      <div class="chart"><canvas id="cLb"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Quick Reports -->
+  <div class="card" style="margin-top:16px">
+    <h2>Quick Reports</h2>
+    <div class="subgrid">
+      <div class="card green">
+        <h2>Top Pharmacy Items (30d)</h2>
+        <div id="topItems" class="helper">—</div>
+      </div>
+      <div class="card blue">
+        <h2>Busy Booking Days (30d)</h2>
+        <div id="busyDays" class="helper">—</div>
+      </div>
+      <div class="card lilac">
+        <h2>Popular Lab Tests (30d)</h2>
+        <div id="popTests" class="helper">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { db } from "./scripts/db.js";
+import { guard } from "./scripts/auth.js";
+
+guard(["doctor","master","supervisor"]); // analytics visible to clinic roles
+
+// --- Date helpers
+const fmt = (d)=> d.toISOString().slice(0,10);
+const startOfDay = (d)=> (d=new Date(d), d.setHours(0,0,0,0), d);
+const endOfDay   = (d)=> (d=new Date(d), d.setHours(23,59,59,999), d);
+const startOfWeek= (d=new Date())=>{ const x=new Date(d); const i=(x.getDay()+6)%7; x.setDate(x.getDate()-i); return startOfDay(x); };
+const endOfWeek  = (d=new Date())=>{ const s=startOfWeek(d); const e=new Date(s); e.setDate(e.getDate()+6); return endOfDay(e); };
+const startOfMonth=(d=new Date())=> startOfDay(new Date(d.getFullYear(), d.getMonth(), 1));
+const endOfMonth  =(d=new Date())=> endOfDay(new Date(d.getFullYear(), d.getMonth()+1, 0));
+
+// --- KPI loader
+async function loadKPIs(){
+  const invs = await db.invoices.toArray();
+  const bks  = await db.bookings.toArray();
+  const labs = await db.labInvoices.toArray();
+  const todayS = startOfDay(new Date()), todayE = endOfDay(new Date());
+  const wkS = startOfWeek(), wkE = endOfWeek();
+  const mS = startOfMonth(), mE = endOfMonth();
+
+  // helpers
+  const inRange = (ds, a,b)=>{ const d = new Date(ds); return d>=a && d<=b; };
+
+  // Pharmacy totals
+  const sum = (arr, key="total") => arr.reduce((s,x)=> s + (+x[key]||0), 0);
+  const phToday = sum(invs.filter(i=> inRange(i.date, todayS, todayE)));
+  const phWeek  = sum(invs.filter(i=> inRange(i.date, wkS, wkE)));
+  const phMonth = sum(invs.filter(i=> inRange(i.date, mS, mE)));
+  document.getElementById("phToday").textContent = "₹"+phToday.toFixed(2);
+  document.getElementById("phWeek").textContent  = "₹"+phWeek.toFixed(2);
+  document.getElementById("phMonth").textContent = "₹"+phMonth.toFixed(2);
+
+  // Bookings counts
+  const bkToday = bks.filter(b=> inRange(b.date, todayS, todayE)).length;
+  const bkWeek  = bks.filter(b=> inRange(b.date, wkS, wkE)).length;
+  const bkMonth = bks.filter(b=> inRange(b.date, mS, mE)).length;
+  document.getElementById("bkToday").textContent = bkToday;
+  document.getElementById("bkWeek").textContent  = bkWeek;
+  document.getElementById("bkMonth").textContent = bkMonth;
+
+  // Lab totals
+  const lbToday = sum(labs.filter(l=> inRange(l.date, todayS, todayE)));
+  const lbWeek  = sum(labs.filter(l=> inRange(l.date, wkS, wkE)));
+  const lbMonth = sum(labs.filter(l=> inRange(l.date, mS, mE)));
+  document.getElementById("lbToday").textContent = "₹"+lbToday.toFixed(2);
+  document.getElementById("lbWeek").textContent  = "₹"+lbWeek.toFixed(2);
+  document.getElementById("lbMonth").textContent = "₹"+lbMonth.toFixed(2);
+}
+
+// --- Mini charts (vanilla canvas; no libs)
+function lineChart(canvas, labels, values){
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width = canvas.clientWidth * devicePixelRatio;
+  const H = canvas.height= 180 * devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+
+  const pad = 24*devicePixelRatio;
+  const xs = labels.length;
+  const max = Math.max(1, ...values);
+  const x = i => pad + (W-2*pad) * (i/(xs-1||1));
+  const y = v => (H-pad) - (H-2*pad) * (v/max);
+
+  // grid
+  ctx.globalAlpha = .15;
+  ctx.beginPath();
+  for(let i=0;i<5;i++){
+    const gy = pad + i*(H-2*pad)/4;
+    ctx.moveTo(pad, gy); ctx.lineTo(W-pad, gy);
+  }
+  ctx.strokeStyle = "#000"; ctx.lineWidth = 1*devicePixelRatio; ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // line
+  ctx.beginPath();
+  values.forEach((v,i)=>{ const X=x(i), Y=y(v); i? ctx.lineTo(X,Y): ctx.moveTo(X,Y); });
+  ctx.lineWidth = 2.5*devicePixelRatio;
+  ctx.strokeStyle = "#0f766e"; // default color (ok to keep; spec allows defaults)
+  ctx.stroke();
+
+  // dots
+  values.forEach((v,i)=>{ const X=x(i), Y=y(v); ctx.beginPath(); ctx.arc(X,Y,3*devicePixelRatio,0,Math.PI*2); ctx.fill(); });
+}
+
+function lastNDays(n){
+  const days=[], labels=[];
+  for(let i=n-1;i>=0;i--){
+    const d=new Date(); d.setDate(d.getDate()-i);
+    days.push(fmt(d));
+    labels.push((d.getMonth()+1)+"/"+d.getDate());
+  }
+  return {days, labels};
+}
+
+async function loadCharts(){
+  const { days, labels } = lastNDays(14);
+
+  // Pharmacy totals per day
+  const invs = await db.invoices.toArray();
+  const ph = days.map(d => invs.filter(i=> i.date===d).reduce((s,x)=>s+(+x.total||0),0));
+
+  // Bookings per day
+  const bks = await db.bookings.toArray();
+  const bk = days.map(d => bks.filter(b=> b.date===d).length);
+
+  // Lab totals per day
+  const labs = await db.labInvoices.toArray();
+  const lb = days.map(d => labs.filter(l=> l.date===d).reduce((s,x)=>s+(+x.total||0),0));
+
+  lineChart(document.getElementById("cPh"), labels, ph);
+  lineChart(document.getElementById("cBk"), labels, bk);
+  lineChart(document.getElementById("cLb"), labels, lb);
+
+  // Quick Reports (30d)
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-30);
+  // Top items by qty (from invoiceItems)
+  const items = await db.invoiceItems.toArray();
+  const invMap = {}; (await db.invoices.toArray()).forEach(i=> invMap[i.id]=i);
+  const agg = {};
+  items.forEach(it=>{
+    const inv = invMap[it.invoiceId]; if(!inv) return;
+    const d = new Date(inv.date); if(d<cutoff) return;
+    agg[it.sku] = (agg[it.sku]||0) + (+it.qty||0);
+  });
+  const top = Object.entries(agg).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const names = {}; (await db.pharmacyItems.toArray()).forEach(p=> names[p.sku]=p.name);
+  document.getElementById("topItems").textContent = top.length
+    ? top.map(([sku,q])=> `${names[sku]||sku}: ${q}`).join(" • ")
+    : "No data";
+
+  // Busy booking days
+  const recentBk = bks.filter(b=> new Date(b.date)>=cutoff);
+  const byDay = {};
+  recentBk.forEach(b=> byDay[b.date]=(byDay[b.date]||0)+1);
+  const busy = Object.entries(byDay).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  document.getElementById("busyDays").textContent = busy.length
+    ? busy.map(([d,c])=> `${d}: ${c}`).join(" • ")
+    : "No data";
+
+  // Popular lab tests
+  const recentLab = labs.filter(l=> new Date(l.date)>=cutoff);
+  const testAgg={};
+  recentLab.forEach(l=> (l.tests||[]).forEach(t=> testAgg[t.name]=(testAgg[t.name]||0)+1));
+  const pop = Object.entries(testAgg).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  document.getElementById("popTests").textContent = pop.length
+    ? pop.map(([n,c])=> `${n}: ${c}`).join(" • ")
+    : "No data";
+}
+
+// Init
+await loadKPIs();
+await loadCharts();
+</script>
+</body>
+</html>
