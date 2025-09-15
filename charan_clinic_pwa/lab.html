@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/styles/styles.css" />
+  <title>Lab Services</title>
+  <style>
+    .tabs{display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 16px}
+    .tab{padding:10px 14px; border-radius:12px; cursor:pointer; border:1px solid rgba(255,255,255,.1)}
+    .tab.active{background:var(--primary); color:#fff; border-color:transparent}
+    .section{display:none}
+    .section.active{display:block}
+    .table{width:100%; border-collapse:collapse}
+    .table th,.table td{padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.08)}
+    .overlay{position:fixed; inset:0; background:rgba(0,0,0,.8); display:none; align-items:center; justify-content:center; z-index:50}
+    .overlay.active{display:flex}
+    .scan-box{background:var(--card); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:12px}
+    video{max-width:92vw; border-radius:12px}
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo"><img src="/public/icons/icon-192.png" alt=""><strong>Lab Services</strong></div>
+    <div class="hbtns">
+      <a class="btn" href="/dashboard.html">← Dashboard</a>
+      <a class="btn" href="/supervisor.html">Supervisor</a>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="new" onclick="openTab('new')">New Lab Invoice</div>
+    <div class="tab" data-tab="invoices" onclick="openTab('invoices')">Recent Invoices</div>
+  </div>
+
+  <!-- === New Invoice === -->
+  <section id="new" class="section active">
+    <div class="card green">
+      <h2>Patient</h2>
+      <div class="row">
+        <input id="pUid" class="input" placeholder="Patient UID / Phone" />
+        <button class="btn" onclick="scan('pUid')">📷 Scan ID</button>
+      </div>
+      <div class="row">
+        <input id="pName" class="input" placeholder="Name (auto if existing)" />
+        <input id="pPhone" class="input" placeholder="Phone" inputmode="tel" />
+      </div>
+      <div class="helper">Tip: Enter phone or scan barcode to auto-link existing patient. If new, fill name/phone — UID will be generated.</div>
+    </div>
+
+    <div class="grid" style="margin-top:16px">
+      <div class="card blue">
+        <h2>Add Test</h2>
+        <div class="row">
+          <input id="tCode" class="input" placeholder="Test Code (e.g., CBC)" />
+          <input id="tName" class="input" placeholder="Test Name (e.g., Complete Blood Count)" />
+        </div>
+        <div class="row">
+          <input id="tRate" class="input" type="number" step="0.01" placeholder="Rate ₹" />
+          <input id="tGst" class="input" type="number" step="0.01" placeholder="GST % (e.g., 0 or 12)" />
+        </div>
+        <div class="row">
+          <button class="btn" onclick="addTest()">Add to Invoice</button>
+          <button class="btn" onclick="clearTests()">Clear Tests</button>
+        </div>
+      </div>
+
+      <div class="card lilac">
+        <h2>Tests in Invoice</h2>
+        <div id="testsWrap"></div>
+        <div class="row" style="margin-top:8px">
+          <input id="disc" class="input" type="number" step="0.01" value="0" placeholder="Discount ₹"/>
+          <input id="gstOverall" class="input" type="number" step="0.01" value="0" placeholder="GST % overall (optional)"/>
+        </div>
+        <div id="totals" class="helper">Total: ₹0.00</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Notes / Attachments</h2>
+      <div class="row">
+        <input id="notes" class="input" placeholder="Notes (e.g., fasting 12h, special instructions)" />
+        <input id="fileInput" class="input" type="file" accept="image/*,application/pdf" />
+      </div>
+      <div class="row">
+        <button class="btn" onclick="saveInvoice()">Save Invoice</button>
+        <button class="btn" onclick="resetInvoice()">Reset</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- === Invoices === -->
+  <section id="invoices" class="section">
+    <div class="card">
+      <h2>Recent Lab Invoices</h2>
+      <div class="row">
+        <input id="q" class="input" placeholder="Search by UID / Name / Phone" oninput="loadInvoices()" />
+        <button class="btn" onclick="exportCsv()">Export CSV</button>
+      </div>
+      <table class="table" style="margin-top:10px">
+        <thead>
+          <tr><th>No.</th><th>Date</th><th>Patient</th><th>Tests</th><th>Total</th><th>Share</th></tr>
+        </thead>
+        <tbody id="invBody"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<!-- Scanner overlay (reuse site-wide scanner.js) -->
+<div id="scanOverlay" class="overlay">
+  <div class="scan-box">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px">
+      <strong>Scan Patient ID (Barcode/QR)</strong>
+      <button class="btn" onclick="closeScan()">Close</button>
+    </div>
+    <video id="scanVideo" playsinline></video>
+    <canvas id="scanCanvas" class="hidden"></canvas>
+  </div>
+</div>
+
+<script type="module">
+import { db } from "/scripts/db.js";
+import { guard } from "/scripts/auth.js";
+import { $, $$, walink } from "/scripts/utils.js";
+import { startScan } from "/scripts/scanner.js";
+
+guard(["doctor","supervisor","master"]);
+
+let tests = []; // {code,name,rate,gstPct}
+let stopScanFn = null;
+let scanTargetId = null;
+
+// ---------- Tabs ----------
+window.openTab = (k)=>{
+  $$(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===k));
+  $$(".section").forEach(s=>s.classList.toggle("active", s.id===k));
+  if(k==="invoices") loadInvoices();
+};
+
+// ---------- Scanner ----------
+window.scan = async (inputId)=>{
+  scanTargetId = inputId;
+  $("#scanOverlay").classList.add("active");
+  const video = $("#scanVideo"), canvas=$("#scanCanvas");
+  stopScanFn = await startScan(video, canvas, code=>{
+    document.getElementById(scanTargetId).value = code;
+    closeScan();
+    fetchPatientFromUID(code);
+  });
+};
+window.closeScan = ()=>{
+  if(stopScanFn) stopScanFn();
+  $("#scanOverlay").classList.remove("active");
+};
+
+// ---------- Patient helpers ----------
+function genUID(name, phone){
+  return (name.trim()+"-"+(phone||"").slice(-4)).toLowerCase().replace(/\s+/g,"");
+}
+async function fetchPatientFromUID(uidOrPhone){
+  // phone match or uid
+  let p = await db.patients.get({uid: uidOrPhone});
+  if(!p && uidOrPhone){
+    const all = await db.patients.toArray();
+    p = all.find(x=> (x.phone||"").includes(uidOrPhone));
+  }
+  if(p){
+    $("#pUid").value = p.uid;
+    $("#pName").value = p.name || "";
+    $("#pPhone").value= p.phone || "";
+  }
+}
+
+// ---------- Tests UI ----------
+window.addTest = ()=>{
+  const code = $("#tCode").value.trim() || "-";
+  const name = $("#tName").value.trim();
+  const rate = parseFloat($("#tRate").value||"0");
+  const gst  = parseFloat($("#tGst").value||"0");
+  if(!name || !rate) return alert("Test name and rate required");
+  tests.push({code,name,rate,gstPct:gst});
+  $("#tCode").value=""; $("#tName").value=""; $("#tRate").value=""; $("#tGst").value="";
+  renderTests();
+};
+window.clearTests = ()=>{ tests = []; renderTests(); };
+
+function renderTests(){
+  const wrap = $("#testsWrap"); wrap.innerHTML="";
+  if(!tests.length){ wrap.innerHTML = `<div class="helper">No tests added yet</div>`; updateTotals(); return; }
+  const tbl = document.createElement("table"); tbl.className="table";
+  tbl.innerHTML = `<thead><tr><th>Code</th><th>Name</th><th>Rate</th><th>GST%</th><th>Line</th><th></th></tr></thead>`;
+  const tb = document.createElement("tbody");
+  tests.forEach((t,i)=>{
+    const line = t.rate + (t.rate*(t.gstPct||0)/100);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${t.code}</td><td>${t.name}</td>
+      <td>₹${t.rate.toFixed(2)}</td><td>${(t.gstPct||0).toFixed(2)}</td>
+      <td>₹${line.toFixed(2)}</td>
+      <td><button class="btn" data-rm="${i}">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb); wrap.appendChild(tbl);
+  wrap.querySelectorAll("[data-rm]").forEach(btn=>{
+    btn.addEventListener("click", e=>{
+      const idx = +e.target.dataset.rm; tests.splice(idx,1); renderTests();
+    });
+  });
+  updateTotals();
+}
+
+function updateTotals(){
+  const disc = parseFloat($("#disc").value||"0");
+  const gstOverall = parseFloat($("#gstOverall").value||"0");
+  let base = tests.reduce((s,t)=> s + t.rate, 0);
+  // Prefer per-test GST if set; otherwise apply overall GST
+  let gst = 0;
+  const perTestGstPresent = tests.some(t=> (t.gstPct||0) > 0);
+  if(perTestGstPresent){
+    gst = tests.reduce((s,t)=> s + (t.rate*(t.gstPct||0)/100), 0);
+  }else{
+    gst = base*(gstOverall/100);
+  }
+  const total = Math.max(0, base + gst - disc);
+  $("#totals").textContent = `Base ₹${base.toFixed(2)} + GST ₹${gst.toFixed(2)} − Disc ₹${disc.toFixed(2)} = Total ₹${total.toFixed(2)}`;
+  $("#disc").oninput = ()=>updateTotals();
+  $("#gstOverall").oninput = ()=>updateTotals();
+}
+
+// ---------- Save Invoice ----------
+window.saveInvoice = async ()=>{
+  const name = $("#pName").value.trim();
+  const phone= $("#pPhone").value.trim();
+  let uid   = $("#pUid").value.trim();
+  if(!uid){ if(!name) return alert("Enter patient details"); uid = genUID(name, phone); }
+  if(!tests.length) return alert("Add at least one test");
+
+  // upsert patient
+  const exists = await db.patients.get({uid});
+  if(!exists){
+    await db.patients.put({ uid, name, phone });
+  }else{
+    // keep latest name/phone if typed
+    await db.patients.update(exists.id, { name: name||exists.name, phone: phone||exists.phone });
+  }
+
+  // compute totals
+  const disc = parseFloat($("#disc").value||"0");
+  const gstOverall = parseFloat($("#gstOverall").value||"0");
+  let base = tests.reduce((s,t)=> s + t.rate, 0);
+  let gst = 0;
+  const perTestGstPresent = tests.some(t=> (t.gstPct||0) > 0);
+  if(perTestGstPresent) gst = tests.reduce((s,t)=> s + (t.rate*(t.gstPct||0)/100), 0);
+  else gst = base*(gstOverall/100);
+  const total = Math.max(0, base + gst - disc);
+
+  // invoice number
+  const last = await db.labInvoices.orderBy("id").last();
+  const number = `LAB-${(last?.id||0)+1}`.padStart(8,"0");
+  const date = new Date().toISOString().slice(0,10);
+
+  // attachments: store filename + base64 (small files only)
+  let attachment = null;
+  const f = $("#fileInput").files[0];
+  if(f){
+    const buf = await f.arrayBuffer();
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    attachment = { name: f.name, mime: f.type, b64 };
+  }
+
+  const rec = {
+    number, date, patientUid: uid, tests, base, gst, discount: disc, total,
+    notes: $("#notes").value.trim(), attachment
+  };
+  await db.labInvoices.put(rec);
+
+  alert(`Saved lab invoice ${number} • Total ₹${total.toFixed(2)}`);
+  resetInvoice();
+  openTab("invoices");
+};
+
+window.resetInvoice = ()=>{
+  $("#pUid").value=""; $("#pName").value=""; $("#pPhone").value="";
+  $("#tCode").value=""; $("#tName").value=""; $("#tRate").value=""; $("#tGst").value="";
+  $("#disc").value="0"; $("#gstOverall").value="0"; $("#notes").value="";
+  $("#fileInput").value="";
+  tests=[]; renderTests();
+};
+
+// ---------- Invoices List ----------
+window.loadInvoices = async ()=>{
+  const q = ($("#q").value||"").toLowerCase();
+  const tbody = $("#invBody"); tbody.innerHTML="";
+  const invs = await db.labInvoices.orderBy("id").reverse().limit(100).toArray();
+
+  for(const inv of invs){
+    let p = await db.patients.get({uid: inv.patientUid});
+    // search checks
+    if(q){
+      const hit = (inv.patientUid.toLowerCase().includes(q) ||
+                   (p?.name||"").toLowerCase().includes(q) ||
+                   (p?.phone||"").includes(q));
+      if(!hit) continue;
+    }
+    const testsShort = inv.tests.map(t=>t.name).join(", ");
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${inv.number}</td>
+      <td>${inv.date}</td>
+      <td>${p?.name||inv.patientUid}<div class="helper">${p?.phone||""} • UID ${inv.patientUid}</div></td>
+      <td>${testsShort}</td>
+      <td>₹${(inv.total||0).toFixed(2)}</td>
+      <td><a class="btn" target="_blank" href="${walink(waText(inv, p))}">WhatsApp</a></td>
+    `;
+    tbody.appendChild(tr);
+  }
+};
+
+function waText(inv, p){
+  const lines = [
+    `Lab Invoice ${inv.number}`,
+    `Patient: ${p?.name||inv.patientUid}`,
+    `Date: ${inv.date}`,
+    `Tests: ${inv.tests.map(t=>t.name).join(", ")}`,
+    `Total: ₹${inv.total.toFixed(2)}`,
+    `— Dr. Charan Child Clinic`
+  ];
+  return lines.join("\n");
+}
+
+// ---------- Export CSV ----------
+window.exportCsv = async ()=>{
+  const rows = await db.labInvoices.toArray();
+  if(!rows.length) return alert("Nothing to export");
+  // flatten tests as names joined
+  const flat = rows.map(r=>({
+    number:r.number, date:r.date, patientUid:r.patientUid,
+    tests:r.tests.map(t=>t.name).join("|"),
+    base:r.base, gst:r.gst, discount:r.discount, total:r.total
+  }));
+  const headers = Object.keys(flat[0]);
+  const csv = [headers.join(",")].concat(flat.map(r=> headers.map(h=> JSON.stringify(r[h]??"")).join(","))).join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download="lab_invoices.csv"; a.click();
+  URL.revokeObjectURL(url);
+};
+
+// init
+renderTests(); // empty state
+</script>
+</body>
+</html>
